@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut, shell, session } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, shell, session, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 // YouTube (since Jul 2025) rejects embeds without a Referer (error 153).
-// file:// sends none, so spoof it + match origin/widget_referrer in the player.
+// file:// sends none, so spoof it via header injection in main.
 const APP_REFERER = 'https://uk.co.stubblue.mintmusic/';
 
 // Audio-first app: no need for GPU compositing / VA-API video decode.
@@ -14,12 +15,23 @@ app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-features', 'VaapiVideoDecoder,VaapiVideoEncoder');
 
 let win = null;
+let tray = null;
+let quitting = false;
+
+// ---- tray prefs (persisted in userData) ----
+function prefsPath() { return path.join(app.getPath('userData'), 'tray.json'); }
+function loadPrefs() {
+  try { return Object.assign({ minimizeToTray: true, closeToTray: false }, JSON.parse(fs.readFileSync(prefsPath(), 'utf8'))); }
+  catch { return { minimizeToTray: true, closeToTray: false }; }
+}
+function savePrefs(p) { try { fs.writeFileSync(prefsPath(), JSON.stringify(p)); } catch {} }
 
 function createWindow() {
   win = new BrowserWindow({
     width: 980,
     height: 720,
     backgroundColor: '#0a1931',
+    icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -29,10 +41,48 @@ function createWindow() {
   });
 
   win.loadFile('index.html');
+
+  win.on('minimize', () => {
+    if (loadPrefs().minimizeToTray) win.hide();
+  });
+  win.on('close', (e) => {
+    if (!quitting && loadPrefs().closeToTray) {
+      e.preventDefault();
+      win.hide();
+    }
+  });
+}
+
+function toggleShow() {
+  if (!win || win.isDestroyed()) return;
+  if (win.isVisible()) win.hide();
+  else { win.show(); win.focus(); }
+}
+
+function buildTray() {
+  try {
+    const iconPath = path.join(__dirname, 'assets', 'tray.png');
+    const img = nativeImage.createFromPath(iconPath);
+    tray = new Tray(img.isEmpty() ? nativeImage.createEmpty() : img);
+  } catch (e) {
+    console.warn('tray unavailable:', e.message);
+    return;
+  }
+  tray.setToolTip('MintMusic');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Show / Hide', click: toggleShow },
+    { label: 'Play / Pause', click: () => sendMedia('toggle') },
+    { label: 'Next track', click: () => sendMedia('next') },
+    { type: 'separator' },
+    { label: 'Quit', click: () => { quitting = true; app.quit(); } }
+  ]));
+  tray.on('click', toggleShow);
 }
 
 function sendMedia(action) {
-  if (win && !win.isDestroyed()) win.webContents.send('media-key', action);
+  if (!win || win.isDestroyed()) return;
+  if (!win.isVisible()) { /* keep hidden on tray-only control */ }
+  win.webContents.send('media-key', action);
 }
 
 app.whenReady().then(() => {
@@ -45,6 +95,7 @@ app.whenReady().then(() => {
   );
 
   createWindow();
+  buildTray();
 
   // Media keys (Linux: XF86 + generic). Fail silently if taken by system.
   try {
@@ -56,13 +107,16 @@ app.whenReady().then(() => {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    else if (win) { win.show(); }
   });
 });
 
 app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('before-quit', () => { quitting = true; });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // With minimize-to-tray, windows are hidden not closed; quit only when asked.
+  if (process.platform !== 'darwin' && (!tray || quitting)) app.quit();
 });
 
 ipcMain.handle('pick-folder', async () => {
@@ -75,8 +129,14 @@ ipcMain.handle('open-url', async (_e, url) => {
   if (/^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(u)) await shell.openExternal(u);
 });
 
-// Keyless YouTube search via Innertube (public WEB client key — no user API key needed).
-// Falls back to Piped public instances if Innertube is blocked.
+ipcMain.handle('tray-prefs-get', () => loadPrefs());
+ipcMain.handle('tray-prefs-set', (_e, p) => {
+  const next = Object.assign(loadPrefs(), p);
+  savePrefs(next);
+  return next;
+});
+
+// ---- keyless YouTube (Innertube) ----
 function collectVideos(node, out) {
   if (!node || out.length >= 500) return;
   if (Array.isArray(node)) {
@@ -100,7 +160,6 @@ function collectVideos(node, out) {
   }
 }
 function findContinuation(node) {
-
   if (!node) return null;
   if (Array.isArray(node)) {
     for (const v of node) { const t = findContinuation(v); if (t) return t; }
