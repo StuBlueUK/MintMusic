@@ -117,3 +117,6 @@ body {
 .lyrics-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .lyrics-head b { flex: 1; }
 #lyricsBody { overflow-y: auto; white-space: pre-wrap; font-size: 14px; line-height: 1.6; color: var(--text); }
+#playlist li .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn.mini { padding: 2px 8px; font-size: 12px; border-radius: 8px; }
+#history { max-height: 140px; overflow-y: auto; }

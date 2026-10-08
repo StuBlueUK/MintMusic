@@ -33,6 +33,7 @@
         <button class="btn primary" id="playBtn" title="Play/Pause (Space)">▶ Play</button>
         <button class="btn" id="next" title="Next">⏭</button>
         <button class="btn" id="shuffleBtn" title="Shuffle">🔀</button>
+        <button class="btn" id="repeatBtn" title="Repeat: off → all → one">Repeat: off</button>
         <button class="btn" id="lyricsBtn" title="Lyrics">📝</button>
         <select id="sleep" title="Sleep timer">
           <option value="0">Sleep: off</option>
@@ -57,11 +58,19 @@
 
   <div class="glass panel" id="tab-results">
     <h3>YouTube results (audio only)</h3>
+    <div class="rowflex">
+      <input id="ytPlUrl" placeholder="Paste YouTube playlist URL to import…">
+      <button class="btn" id="ytPlImport">Import playlist</button>
+    </div>
     <div id="results"><div class="hint">Search for music above. Needs a free YouTube Data API key (Settings tab).</div></div>
   </div>
 
   <div class="glass panel hidden" id="tab-queue">
     <h3>Queue</h3>
+    <div class="rowflex">
+      <button class="btn" id="qClear">Clear queue</button>
+      <button class="btn" id="qExport">Export .m3u</button>
+    </div>
     <div class="drop" id="drop">
       Drag &amp; drop audio files here
       <div class="row">
@@ -71,6 +80,8 @@
       <input type="file" id="fileInput" accept="audio/*,.mp3,.ogg,.wav,.flac,.m4a" multiple hidden>
     </div>
     <ul id="playlist"></ul>
+    <h3>History</h3>
+    <div id="history"></div>
     <div class="hint">Local files + YouTube tracks share one queue. Audio only — no video window.</div>
   </div>
 

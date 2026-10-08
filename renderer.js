@@ -39,9 +39,20 @@ function render() {
   tracks.forEach((t, i) => {
     const li = document.createElement('li');
     if (i === idx && tracks.length) li.classList.add('playing');
-    li.innerHTML = `<span class="n">${String(i + 1).padStart(2, '0')}</span><span>${t.kind === 'yt' ? '▶ ' : ''}${escapeHtml(t.name)}</span>`;
+    li.innerHTML = `<span class="n">${String(i + 1).padStart(2, '0')}</span><span class="t">${t.kind === 'yt' ? '▶ ' : ''}${escapeHtml(t.name)}</span>`;
     li.title = t.channel || t.name;
-    li.onclick = () => play(i);
+    li.querySelector('.t').onclick = () => play(i);
+    const x = document.createElement('button');
+    x.className = 'btn mini';
+    x.textContent = '✕';
+    x.title = 'Remove';
+    x.onclick = e => {
+      e.stopPropagation();
+      tracks.splice(i, 1);
+      if (idx >= tracks.length) idx = 0;
+      render();
+    };
+    li.appendChild(x);
     list.appendChild(li);
   });
 }
@@ -59,6 +70,8 @@ function play(i) {
   if (!tracks.length) return;
   idx = (i + tracks.length) % tracks.length;
   const t = tracks[idx];
+  pushHistory(t);
+  notifyTrack(t);
   if (t.kind === 'yt') {
     stopFile();
     currentKind = 'yt';
@@ -102,7 +115,12 @@ document.getElementById('shuffleBtn').onclick = () => {
 // file audio events
 player.onplay = () => currentKind === 'file' && setPlayingUI(true);
 player.onpause = () => currentKind === 'file' && setPlayingUI(false);
-player.onended = () => play(idx + 1);
+player.onended = () => handleEnded();
+function handleEnded() {
+  if (repeatMode === 'one') return play(idx);
+  if (idx === tracks.length - 1 && repeatMode === 'off') { setPlayingUI(false); return; }
+  play(idx + 1);
+}
 player.ontimeupdate = () => {
   if (currentKind !== 'file') return;
   if (player.duration) seek.value = Math.floor(player.currentTime / player.duration * 1000);
@@ -117,9 +135,11 @@ seek.oninput = () => {
 };
 vol.oninput = () => {
   player.volume = vol.value / 100;
+  localStorage.setItem('mm_vol', String(vol.value));
   if (ytPlayer && ytPlayer.setVolume) ytPlayer.setVolume(Number(vol.value));
 };
-player.volume = 0.8;
+player.volume = (Number(localStorage.getItem('mm_vol')) || 80) / 100;
+vol.value = String(Number(localStorage.getItem('mm_vol')) || 80);
 
 // hidden YT IFrame (audio only — 2px, invisible)
 window.onYouTubeIframeAPIReady = () => {
@@ -136,7 +156,10 @@ window.onYouTubeIframeAPIReady = () => {
           tickYT();
         }
         else if (e.data === YT.PlayerState.PAUSED) setPlayingUI(false);
-        else if (e.data === YT.PlayerState.ENDED) play(idx + 1);
+        else if (e.data === YT.PlayerState.ENDED) {
+          if (repeatMode === 'one') play(idx);
+          else handleEnded();
+        }
       }
     }
   });
@@ -324,5 +347,101 @@ if (window.mintmusic && window.mintmusic.onMediaKey) {
   });
 }
 
+// ---- repeat / history / notifications / import / export ----
+let repeatMode = localStorage.getItem('mm_repeat') || 'off';
+const repeatBtn = document.getElementById('repeatBtn');
+function paintRepeat() { repeatBtn.textContent = 'Repeat: ' + repeatMode; }
+repeatBtn.onclick = () => {
+  repeatMode = repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off';
+  localStorage.setItem('mm_repeat', repeatMode);
+  paintRepeat();
+};
+paintRepeat();
+
+function pushHistory(t) {
+  try {
+    const h = JSON.parse(localStorage.getItem('mm_history') || '[]');
+    h.unshift({ name: t.name, channel: t.channel || '', videoId: t.videoId || null, kind: t.kind, at: Date.now() });
+    localStorage.setItem('mm_history', JSON.stringify(h.slice(0, 200)));
+    renderHistory();
+  } catch {}
+}
+function renderHistory() {
+  const box = document.getElementById('history');
+  if (!box) return;
+  const h = JSON.parse(localStorage.getItem('mm_history') || '[]');
+  box.innerHTML = h.length ? '' : '<div class="hint">Nothing played yet.</div>';
+  h.slice(0, 30).forEach(item => {
+    const d = document.createElement('div');
+    d.className = 'pl-tracks';
+    d.textContent = `• ${item.name}`;
+    box.appendChild(d);
+  });
+}
+function notifyTrack(t) {
+  try {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(t.name, { body: t.channel || 'MintMusic' });
+    } else if ('Notification' in window && Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+  } catch {}
+}
+
+document.getElementById('qClear').onclick = () => {
+  stopYT(); player.pause();
+  tracks = []; idx = 0;
+  nowTitle.textContent = 'Nothing playing';
+  render(); setPlayingUI(false);
+};
+document.getElementById('qExport').onclick = () => {
+  const lines = ['#EXTM3U'];
+  tracks.forEach(t => {
+    lines.push(`#EXTINF:-1,${t.name}`);
+    lines.push(t.kind === 'yt' ? `https://www.youtube.com/watch?v=${t.videoId}` : t.name);
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'audio/x-mpegurl' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mintmusic.m3u';
+  a.click();
+};
+document.getElementById('ytPlImport').onclick = async () => {
+  const url = document.getElementById('ytPlUrl').value.trim();
+  const key = getKey();
+  const m = url.match(/[?&]list=([^&]+)/);
+  if (!m) { alert('Paste a full YouTube playlist URL (with ?list=…).'); return; }
+  if (!key) { alert('Add API key in Settings first.'); return; }
+  try {
+    let page = '', added = 0;
+    for (let p = 0; p < 5; p++) {
+      const r = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${m[1]}&key=${key}${page ? '&pageToken=' + page : ''}`).then(r => r.json());
+      if (r.error) throw new Error(r.error.message);
+      (r.items || []).forEach(it => {
+        tracks.push({ kind: 'yt', name: it.snippet.title, videoId: it.snippet.resourceId.videoId, channel: it.snippet.videoOwnerChannelTitle || it.snippet.channelTitle });
+        added++;
+      });
+      page = r.nextPageToken || '';
+      if (!page) break;
+    }
+    render();
+    alert(`Imported ${added} tracks to queue.`);
+  } catch (e) { alert('Import failed: ' + e.message); }
+};
+
+// arrow-key seek
+document.addEventListener('keydown', e => {
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+  if (e.key === 'ArrowRight') {
+    if (currentKind === 'file' && player.duration) player.currentTime = Math.min(player.duration, player.currentTime + 10);
+    else if (ytPlayer && ytPlayer.seekTo) ytPlayer.seekTo((ytPlayer.getCurrentTime() || 0) + 10, true);
+  }
+  if (e.key === 'ArrowLeft') {
+    if (currentKind === 'file') player.currentTime = Math.max(0, player.currentTime - 10);
+    else if (ytPlayer && ytPlayer.seekTo) ytPlayer.seekTo(Math.max(0, (ytPlayer.getCurrentTime() || 0) - 10), true);
+  }
+});
+
 render();
 renderPls();
+renderHistory();
