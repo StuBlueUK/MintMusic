@@ -1,5 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, shell, session } = require('electron');
 const path = require('path');
+
+// YouTube (since Jul 2025) rejects embeds without a Referer (error 153).
+// file:// sends none, so spoof it + match origin/widget_referrer in the player.
+const APP_REFERER = 'https://uk.co.stubblue.mintmusic/';
 
 let win = null;
 
@@ -24,6 +28,14 @@ function sendMedia(action) {
 }
 
 app.whenReady().then(() => {
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*', '*://*.googlevideo.com/*'] },
+    (details, callback) => {
+      details.requestHeaders['Referer'] = APP_REFERER;
+      callback({ requestHeaders: details.requestHeaders });
+    }
+  );
+
   createWindow();
 
   // Media keys (Linux: XF86 + generic). Fail silently if taken by system.

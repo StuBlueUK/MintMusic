@@ -158,19 +158,24 @@ vol.oninput = () => {
 player.volume = (Number(localStorage.getItem('mm_vol')) || 80) / 100;
 vol.value = String(Number(localStorage.getItem('mm_vol')) || 80);
 
-// hidden YT IFrame (audio only — full-size but off-screen so Chromium doesn't throttle it)
+// YouTube IFrame player — visible 320x200 (YouTube requires >=200x200 visible;
+// hidden/off-screen players get error 153 + violate embed terms)
 window.onYouTubeIframeAPIReady = () => {
   console.log('YT API ready');
   try {
     ytPlayer = new YT.Player('ytplayer', {
-      height: '180', width: '320',
-      playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0, playsinline: 1 },
+      height: '200', width: '320',
+      host: 'https://www.youtube.com',
+      playerVars: {
+        autoplay: 0, controls: 1, disablekb: 0, fs: 0, rel: 0, playsinline: 1,
+        origin: 'https://uk.co.stubblue.mintmusic',
+        widget_referrer: 'https://uk.co.stubblue.mintmusic'
+      },
       events: {
         onReady: e => {
           ytReady = true;
           try { e.target.setVolume(Number(vol.value)); } catch {}
           console.log('YT player ready');
-          nowSub.textContent = nowSub.textContent.replace(' • connecting…', '');
         },
         onAutoplayBlocked: () => {
           console.warn('YT autoplay blocked — unmuting + retry');
@@ -178,11 +183,12 @@ window.onYouTubeIframeAPIReady = () => {
         },
         onError: e => {
           console.warn('YT error', e.data);
-          const t = tracks[idx];
           const code = e.data;
-          const msg = code === 101 || code === 150 ? 'This video blocks embedding (label restriction).'
-            : code === 100 ? 'Video not found/private.'
-            : 'YouTube error ' + code + '.';
+          let msg;
+          if (code === 153) msg = 'Error 153: missing client identity. Update the app / restart — the fix ships Referer headers. If it persists, use ↗ YouTube.';
+          else if (code === 101 || code === 150) msg = 'This video blocks embedding (label restriction).';
+          else if (code === 100) msg = 'Video not found/private.';
+          else msg = 'YouTube error ' + code + '.';
           nowSub.textContent = msg + ' Use ↗ YouTube.';
           setPlayingUI(false);
           document.getElementById('openYT').classList.remove('hidden');

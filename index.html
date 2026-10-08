@@ -108,6 +108,10 @@
   </div>
 </div>
 
+<div class="glass panel" id="videoPanel">
+  <h3>Player (YouTube requires a visible player — keep it on screen)</h3>
+  <div id="ytWrap"><div id="ytplayer"></div></div>
+</div>
 <div id="lyricsModal" class="hidden">
   <div class="glass lyrics-box">
     <div class="lyrics-head"><b id="lyricsTitle">Lyrics</b><button class="btn" id="lyricsClose">Close</button></div>
@@ -115,7 +119,7 @@
   </div>
 </div>
 
-<div id="ytWrap"><div id="ytplayer"></div></div>
+<div id="ytWrapOld" style="display:none"></div>
 <audio id="player"></audio>
 <script src="https://www.youtube.com/iframe_api"></script>
 <script src="renderer.js"></script>
