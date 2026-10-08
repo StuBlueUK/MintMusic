@@ -34,7 +34,9 @@
         <button class="btn" id="next" title="Next">⏭</button>
         <button class="btn hidden" id="openYT" title="Open this track on YouTube">↗ YouTube</button>
         <button class="btn" id="shuffleBtn" title="Shuffle">⇄</button>
+        <button class="btn" id="miniBtn" title="Mini player (compact always-on-top)">⤢</button>
         <button class="btn" id="repeatBtn" title="Repeat: off → all → one">Repeat: off</button>
+        <button class="btn" id="favBtn" title="Star current track">☆</button>
         <button class="btn" id="lyricsBtn" title="Lyrics">♪</button>
         <select id="sleep" title="Sleep timer">
           <option value="0">Sleep: off</option>
@@ -84,7 +86,9 @@
     <div class="rowflex">
       <button class="btn" id="qClear">Clear queue</button>
       <button class="btn" id="qExport">Export .m3u</button>
+      <button class="btn" id="qRemoveSel">Remove selected</button>
     </div>
+    <div class="hint">Drag tracks to reorder • tick to multi-select</div>
     <div class="drop" id="drop">
       Drag &amp; drop audio files here
       <div class="row">
@@ -100,6 +104,10 @@
   </div>
 
   <div class="glass panel hidden" id="tab-playlists">
+    <h3>★ Favorites</h3>
+    <div id="favList"><div class="hint">Star tracks with ☆ to pin them here.</div></div>
+    <h3>Most played</h3>
+    <div id="topList"></div>
     <h3>Playlists</h3>
     <div class="rowflex">
       <input id="plName" placeholder="New playlist name…">
@@ -119,6 +127,10 @@
     </div>
     <label class="check"><input type="checkbox" id="trayMin"> Minimize to tray (taskbar notification area)</label>
     <label class="check"><input type="checkbox" id="trayClose"> Close button minimizes to tray instead of quitting</label>
+    <div class="rowflex">
+      <button class="btn" id="updCheck">Check for updates</button>
+      <span id="updStatus" class="hint"></span>
+    </div>
     <div class="hint">Key is stored locally (localStorage v0.2, moves to OS keyring later). Search costs ~100 quota units; free tier = ~100 searches/day. Without a key, search is disabled.</div>
   </div>
 </div>

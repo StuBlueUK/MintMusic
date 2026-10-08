@@ -8,5 +8,9 @@ contextBridge.exposeInMainWorld('mintmusic', {
   importPlaylist: (id) => ipcRenderer.invoke('yt-playlist', id),
   openUrl: (u) => ipcRenderer.invoke('open-url', u),
   trayPrefsGet: () => ipcRenderer.invoke('tray-prefs-get'),
-  trayPrefsSet: (p) => ipcRenderer.invoke('tray-prefs-set', p)
+  trayPrefsSet: (p) => ipcRenderer.invoke('tray-prefs-set', p),
+  miniToggle: () => ipcRenderer.invoke('mini-toggle'),
+  mprisUpdate: (s) => ipcRenderer.invoke('mpris-update', s),
+  checkUpdates: () => ipcRenderer.invoke('check-updates'),
+  onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_e, msg) => cb(msg))
 });

@@ -121,5 +121,17 @@ body {
 .lyrics-head b { flex: 1; }
 #lyricsBody { overflow-y: auto; white-space: pre-wrap; font-size: 14px; line-height: 1.6; color: var(--text); }
 #playlist li .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#playlist li input[type="checkbox"] { accent-color: var(--accent); }
+#playlist li.dragging { opacity: 0.4; }
+#playlist li.droptarget { border-color: var(--accent2); background: rgba(56,189,248,.15); }
 .btn.mini { padding: 2px 8px; font-size: 12px; border-radius: 8px; }
 #history { max-height: 140px; overflow-y: auto; }
+/* mini player: compact always-on-top, essentials only */
+body.mini .tabs, body.mini .panel, body.mini .search,
+body.mini .vol, body.mini #sleep, body.mini .sleeplabel,
+body.mini #shuffleBtn, body.mini #repeatBtn, body.mini #favBtn,
+body.mini #lyricsBtn, body.mini #openYT { display: none; }
+body.mini .app { padding: 12px; }
+body.mini .now-playing { padding: 12px; }
+body.mini .disc { width: 56px; height: 56px; }
+body.mini .track-info h2 { font-size: 15px; }

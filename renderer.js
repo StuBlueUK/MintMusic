@@ -37,35 +37,104 @@ document.querySelectorAll('.tab').forEach(b => {
   };
 });
 
-// ---- queue render ----
+// ---- queue render (drag-reorder + multi-select) ----
+let checkedSet = new Set();
 function render() {
   list.innerHTML = '';
+  const cur = tracks[idx];
   tracks.forEach((t, i) => {
     const li = document.createElement('li');
-    if (i === idx && tracks.length) li.classList.add('playing');
-    li.innerHTML = `<span class="n">${String(i + 1).padStart(2, '0')}</span><span class="t">${t.kind === 'yt' ? '▶ ' : ''}${escapeHtml(t.name)}</span>`;
-    li.title = t.channel || t.name;
-    li.querySelector('.t').onclick = () => play(i);
+    if (t === cur && tracks.length) li.classList.add('playing');
+    li.draggable = true;
+    li.dataset.i = i;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = checkedSet.has(i);
+    cb.onclick = e => {
+      e.stopPropagation();
+      if (cb.checked) checkedSet.add(i); else checkedSet.delete(i);
+    };
+    const num = document.createElement('span');
+    num.className = 'n';
+    num.textContent = String(i + 1).padStart(2, '0');
+    const label = document.createElement('span');
+    label.className = 't';
+    label.textContent = (t.kind === 'yt' ? '▶ ' : '') + t.name;
+    label.title = t.channel || t.name;
+    label.onclick = () => play(i);
     const x = document.createElement('button');
     x.className = 'btn mini';
     x.textContent = '✕';
     x.title = 'Remove';
     x.onclick = e => {
       e.stopPropagation();
+      const c = tracks[idx];
       tracks.splice(i, 1);
-      if (idx >= tracks.length) idx = 0;
+      checkedSet = new Set([...checkedSet].filter(n => n !== i).map(n => n > i ? n - 1 : n));
+      idx = Math.max(0, tracks.indexOf(c));
+      if (!tracks.length) idx = 0;
       render();
     };
-    li.appendChild(x);
+    li.append(cb, num, label, x);
+    li.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', String(i)); li.classList.add('dragging'); });
+    li.addEventListener('dragend', () => li.classList.remove('dragging'));
+    li.addEventListener('dragover', e => { e.preventDefault(); li.classList.add('droptarget'); });
+    li.addEventListener('dragleave', () => li.classList.remove('droptarget'));
+    li.addEventListener('drop', e => {
+      e.preventDefault();
+      const from = Number(e.dataTransfer.getData('text/plain'));
+      const c = tracks[idx];
+      const [mv] = tracks.splice(from, 1);
+      tracks.splice(i, 0, mv);
+      checkedSet = new Set();
+      idx = Math.max(0, tracks.indexOf(c));
+      render();
+    });
     list.appendChild(li);
   });
 }
+document.getElementById('qRemoveSel').onclick = () => {
+  if (!checkedSet.size) return;
+  const c = tracks[idx];
+  tracks = tracks.filter((_, i) => !checkedSet.has(i));
+  checkedSet = new Set();
+  idx = Math.max(0, tracks.indexOf(c));
+  if (!tracks.length) idx = 0;
+  render();
+};
 const escapeHtml = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function setPlayingUI(isPlaying) {
   playBtn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
   disc.classList.toggle('spinning', isPlaying);
+  pushMpris(isPlaying ? 'playing' : 'paused');
 }
+// Report state + metadata to MPRIS (Mint sound applet). Best-effort, never throws.
+function ytPos() { try { return ytPlayer && ytPlayer.getCurrentTime ? ytPlayer.getCurrentTime() : 0; } catch { return 0; } }
+function ytDur() { try { return ytPlayer && ytPlayer.getDuration ? ytPlayer.getDuration() : 0; } catch { return 0; } }
+function pushMpris(state) {
+  try {
+    if (!window.mintmusic || !window.mintmusic.mprisUpdate) return;
+    const t = tracks[idx];
+    const isYt = currentKind === 'yt' && t && t.kind === 'yt';
+    window.mintmusic.mprisUpdate({
+      state,
+      id: isYt ? (t.videoId || idx) : ('file-' + idx),
+      title: t ? t.name : 'MintMusic',
+      artist: t ? (t.channel || 'MintMusic') : 'MintMusic',
+      art: isYt && t.thumb ? t.thumb : undefined,
+      url: isYt ? 'https://www.youtube.com/watch?v=' + t.videoId : undefined,
+      position: isYt ? ytPos() : (player.currentTime || 0),
+      duration: isYt ? ytDur() : (player.duration || 0)
+    });
+  } catch {}
+}
+// Keep applet position fresh while playing.
+setInterval(() => {
+  const t = tracks[idx];
+  if (t && !player.paused && currentKind === 'file') pushMpris('playing');
+  else if (t && currentKind === 'yt' && ytPlayer && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === 1) pushMpris('playing');
+}, 5000);
 
 function stopYT() { try { ytPlayer && ytPlayer.pauseVideo(); } catch {} }
 function stopFile() { player.pause(); }
@@ -112,6 +181,7 @@ function play(i) {
     nowSub.textContent = `Track ${idx + 1} of ${tracks.length} • audio only`;
   }
   render();
+  paintFavBtn();
 }
 
 function toggle() {
@@ -156,7 +226,7 @@ function radioNext() {
     return false;
   }
   const v = cand[radioPos % cand.length]; radioPos++;
-  tracks.push({ kind: 'yt', name: v.title, videoId: v.videoId, channel: v.channel });
+  tracks.push({ kind: 'yt', name: v.title, videoId: v.videoId, channel: v.channel, thumb: v.thumb });
   render();
   play(tracks.length - 1);
   return true;
@@ -349,6 +419,25 @@ async function pushTrayPrefs() {
 document.getElementById('trayMin').onchange = pushTrayPrefs;
 document.getElementById('trayClose').onchange = pushTrayPrefs;
 
+// ---- mini player ----
+document.getElementById('miniBtn').onclick = async () => {
+  try {
+    const on = await window.mintmusic.miniToggle();
+    document.body.classList.toggle('mini', !!on);
+  } catch {}
+};
+
+// ---- updates ----
+document.getElementById('updCheck').onclick = async () => {
+  const el = document.getElementById('updStatus');
+  el.textContent = 'Checking…';
+  try { el.textContent = await window.mintmusic.checkUpdates(); }
+  catch (e) { el.textContent = 'Check failed: ' + e.message; }
+};
+if (window.mintmusic && window.mintmusic.onUpdateStatus) {
+  window.mintmusic.onUpdateStatus(msg => { document.getElementById('updStatus').textContent = msg; });
+}
+
 function renderResults(items) {
   lastResults = items || [];
   resultsEl.innerHTML = '';
@@ -362,14 +451,14 @@ function renderResults(items) {
     acts.className = 'acts';
     const bPlay = document.createElement('button'); bPlay.className = 'btn primary'; bPlay.textContent = '▶';
     bPlay.title = 'Play now (audio only)';
-    bPlay.onclick = e => { e.stopPropagation(); tracks.push({ kind: 'yt', name: v.title, videoId: id, channel: v.channel }); play(tracks.length - 1); };
+    bPlay.onclick = e => { e.stopPropagation(); tracks.push({ kind: 'yt', name: v.title, videoId: id, channel: v.channel, thumb: v.thumb }); play(tracks.length - 1); };
     const bQ = document.createElement('button'); bQ.className = 'btn'; bQ.textContent = '+ Queue';
-    bQ.onclick = e => { e.stopPropagation(); tracks.push({ kind: 'yt', name: v.title, videoId: id, channel: v.channel }); render(); };
+    bQ.onclick = e => { e.stopPropagation(); tracks.push({ kind: 'yt', name: v.title, videoId: id, channel: v.channel, thumb: v.thumb }); render(); };
     const bPl = document.createElement('button'); bPl.className = 'btn'; bPl.textContent = '+ Playlist';
     bPl.onclick = e => { e.stopPropagation(); addToPlaylistPrompt({ kind: 'yt', name: v.title, videoId: id, channel: v.channel }); };
     acts.append(bPlay, bQ, bPl);
     div.appendChild(acts);
-    div.onclick = () => { tracks.push({ kind: 'yt', name: v.title, videoId: id, channel: v.channel }); play(tracks.length - 1); };
+    div.onclick = () => { tracks.push({ kind: 'yt', name: v.title, videoId: id, channel: v.channel, thumb: v.thumb }); play(tracks.length - 1); };
     resultsEl.appendChild(div);
   });
 }
@@ -424,7 +513,68 @@ document.getElementById('pick').onclick = async () => {
   if (p) alert('Picked: ' + p + '\nDrag files from that folder in for now.');
 };
 
-// ---- playlists (localStorage) ----
+// ---- favorites (localStorage, keyed by videoId or file name) ----
+const favKey = t => t.kind === 'yt' && t.videoId ? 'yt:' + t.videoId : 'file:' + t.name;
+const loadFavs = () => JSON.parse(localStorage.getItem('mm_favs') || '{}');
+const saveFavs = f => localStorage.setItem('mm_favs', JSON.stringify(f));
+function paintFavBtn() {
+  const t = tracks[idx];
+  document.getElementById('favBtn').textContent = (t && loadFavs()[favKey(t)]) ? '★' : '☆';
+}
+document.getElementById('favBtn').onclick = () => {
+  const t = tracks[idx];
+  if (!t) return;
+  const f = loadFavs(), k = favKey(t);
+  if (f[k]) delete f[k]; else f[k] = { kind: t.kind, name: t.name, videoId: t.videoId || null, channel: t.channel || '' };
+  saveFavs(f); paintFavBtn(); renderFavs();
+};
+function favToTrack(f) {
+  return f.kind === 'yt' && f.videoId
+    ? { kind: 'yt', name: f.name, videoId: f.videoId, channel: f.channel }
+    : null; // local files can't be restored after reload (object URLs die)
+}
+function renderFavs() {
+  const box = document.getElementById('favList');
+  const entries = Object.entries(loadFavs());
+  box.innerHTML = entries.length ? '' : '<div class="hint">Star tracks with ☆ to pin them here.</div>';
+  entries.forEach(([k, f]) => {
+    const d = document.createElement('div');
+    d.className = 'res-item';
+    d.innerHTML = `<div class="meta"><b>${escapeHtml(f.name)}</b><span>${escapeHtml(f.channel || f.kind)}</span></div>`;
+    const acts = document.createElement('div');
+    acts.className = 'acts';
+    if (f.kind === 'yt' && f.videoId) {
+      const bPlay = document.createElement('button'); bPlay.className = 'btn primary'; bPlay.textContent = '▶';
+      bPlay.onclick = () => { tracks.push(favToTrack(f)); play(tracks.length - 1); };
+      acts.appendChild(bPlay);
+    } else {
+      const s = document.createElement('span'); s.className = 'hint'; s.textContent = 'local file';
+      acts.appendChild(s);
+    }
+    const bX = document.createElement('button'); bX.className = 'btn'; bX.textContent = '✕';
+    bX.onclick = () => { const p = loadFavs(); delete p[k]; saveFavs(p); paintFavBtn(); renderFavs(); };
+    acts.appendChild(bX);
+    d.appendChild(acts);
+    box.appendChild(d);
+  });
+  // most played from history
+  const counts = {};
+  try { JSON.parse(localStorage.getItem('mm_history') || '[]').forEach(h => {
+    const k = h.videoId ? 'yt:' + h.videoId : 'file:' + h.name;
+    counts[k] = counts[k] || { n: 0, h };
+    counts[k].n++;
+  }); } catch {}
+  const top = Object.values(counts).sort((a, b) => b.n - a.n).slice(0, 10);
+  const tbox = document.getElementById('topList');
+  tbox.innerHTML = top.length ? '' : '<div class="hint">Play something first.</div>';
+  top.forEach(({ n, h }) => {
+    const d = document.createElement('div');
+    d.className = 'pl-tracks';
+    d.textContent = `• ${h.name} (${n}×)`;
+    if (h.videoId) { d.style.cursor = 'pointer'; d.onclick = () => { tracks.push({ kind: 'yt', name: h.name, videoId: h.videoId, channel: h.channel }); play(tracks.length - 1); }; }
+    tbox.appendChild(d);
+  });
+}
 const loadPls = () => JSON.parse(localStorage.getItem('mm_playlists') || '{}');
 const savePls = p => localStorage.setItem('mm_playlists', JSON.stringify(p));
 function renderPls() {
@@ -550,6 +700,7 @@ function pushHistory(t) {
     h.unshift({ name: t.name, channel: t.channel || '', videoId: t.videoId || null, kind: t.kind, at: Date.now() });
     localStorage.setItem('mm_history', JSON.stringify(h.slice(0, 200)));
     renderHistory();
+    if (typeof renderFavs === 'function') renderFavs();
   } catch {}
 }
 function renderHistory() {
@@ -603,7 +754,7 @@ document.getElementById('ytPlImport').onclick = async () => {
     if (window.mintmusic && window.mintmusic.importPlaylist) {
       const items = await window.mintmusic.importPlaylist(m[1]);
       if (items && items.length) {
-        items.forEach(v => tracks.push({ kind: 'yt', name: v.title, videoId: v.videoId, channel: v.channel }));
+        items.forEach(v => tracks.push({ kind: 'yt', name: v.title, videoId: v.videoId, channel: v.channel, thumb: v.thumb }));
         render();
         resultsEl.innerHTML = `<div class="hint">Imported ${items.length} tracks to queue. ▶ to play.</div>`;
         play(tracks.length - items.length);
@@ -622,7 +773,7 @@ document.getElementById('ytPlImport').onclick = async () => {
       const r = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${m[1]}&key=${key}${page ? '&pageToken=' + page : ''}`).then(r => r.json());
       if (r.error) throw new Error(r.error.message);
       (r.items || []).forEach(it => {
-        tracks.push({ kind: 'yt', name: it.snippet.title, videoId: it.snippet.resourceId.videoId, channel: it.snippet.videoOwnerChannelTitle || it.snippet.channelTitle });
+        tracks.push({ kind: 'yt', name: it.snippet.title, videoId: it.snippet.resourceId.videoId, channel: it.snippet.videoOwnerChannelTitle || it.snippet.channelTitle, thumb: it.snippet.thumbnails?.medium?.url });
         added++;
       });
       page = r.nextPageToken || '';
@@ -690,7 +841,7 @@ document.getElementById('randomPlaylist').onclick = async () => {
     const items = await window.mintmusic.importPlaylist(pick.playlistId);
     if (!items || !items.length) { resultsEl.innerHTML = '<div class="hint">That playlist came up empty — hit 🎲 again.</div>'; return; }
     const at = tracks.length;
-    items.forEach(v => tracks.push({ kind: 'yt', name: v.title, videoId: v.videoId, channel: v.channel }));
+    items.forEach(v => tracks.push({ kind: 'yt', name: v.title, videoId: v.videoId, channel: v.channel, thumb: v.thumb }));
     render();
     resultsEl.innerHTML = `<div class="hint">🎲 Imported ${items.length} tracks from “${escapeHtml(pick.title)}” — playing now.</div>`;
     play(at);
@@ -702,3 +853,5 @@ document.getElementById('randomPlaylist').onclick = async () => {
 render();
 renderPls();
 renderHistory();
+renderFavs();
+paintFavBtn();

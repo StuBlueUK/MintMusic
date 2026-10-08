@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, globalShortcut, shell, session, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { autoUpdater } = require('electron-updater');
 
 // YouTube (since Jul 2025) rejects embeds without a Referer (error 153).
 // file:// sends none, so spoof it via header injection in main.
@@ -96,6 +97,21 @@ app.whenReady().then(() => {
 
   createWindow();
   buildTray();
+  initMpris();
+
+  // Auto-updates from GitHub Releases (packaged app only; silent in dev).
+  if (app.isPackaged) {
+    autoUpdater.autoDownload = false;
+    autoUpdater.on('update-available', () => {
+      if (win && !win.isDestroyed()) win.webContents.send('update-status', 'Update available — downloading…');
+      autoUpdater.downloadUpdate().catch(e => console.warn('update download failed:', e.message));
+    });
+    autoUpdater.on('update-downloaded', () => {
+      if (win && !win.isDestroyed()) win.webContents.send('update-status', 'Update downloaded — restart to install.');
+    });
+    autoUpdater.on('error', e => console.warn('updater:', e.message));
+    autoUpdater.checkForUpdates().catch(() => {});
+  }
 
   // Media keys (Linux: XF86 + generic). Fail silently if taken by system.
   try {
@@ -129,11 +145,83 @@ ipcMain.handle('open-url', async (_e, url) => {
   if (/^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(u)) await shell.openExternal(u);
 });
 
-ipcMain.handle('tray-prefs-get', () => loadPrefs());
-ipcMain.handle('tray-prefs-set', (_e, p) => {
+ipcMain.handle('tray-prefs-get', () => loadPrefs());ipcMain.handle('tray-prefs-set', (_e, p) => {
   const next = Object.assign(loadPrefs(), p);
   savePrefs(next);
   return next;
+});
+
+let miniOn = false;
+let normalBounds = null;ipcMain.handle('mini-toggle', () => {  if (!win || win.isDestroyed()) return false;
+  miniOn = !miniOn;
+  if (miniOn) {
+    normalBounds = win.getBounds();
+    win.setAlwaysOnTop(true);
+    win.setSize(430, 300);
+  } else {
+    win.setAlwaysOnTop(false);
+    if (normalBounds) win.setBounds(normalBounds);
+    else win.setSize(980, 720);
+  }
+  return miniOn;
+});
+
+// ---- MPRIS (Mint sound applet / lock screen / playerctl) ----
+let mpris = null;
+let mprisPos = 0; // microseconds, cached from renderer
+function initMpris() {
+  try {
+    const Player = require('mpris-service');
+    mpris = Player({
+      name: 'mintmusic',
+      identity: 'MintMusic',
+      supportedUriSchemes: ['https', 'file'],
+      supportedMimeTypes: ['audio/mpeg', 'audio/ogg', 'audio/flac', 'audio/x-wav'],
+      supportedInterfaces: ['player']
+    });
+    mpris.playbackStatus = 'Stopped';
+    mpris.canPlay = true; mpris.canPause = true;
+    mpris.canGoNext = true; mpris.canGoPrevious = true;
+    mpris.getPosition = () => mprisPos;
+    mpris.on('play', () => sendMedia('toggle'));
+    mpris.on('pause', () => sendMedia('toggle'));
+    mpris.on('playpause', () => sendMedia('toggle'));
+    mpris.on('next', () => sendMedia('next'));
+    mpris.on('previous', () => sendMedia('prev'));
+    mpris.on('stop', () => sendMedia('pause'));
+    mpris.on('quit', () => { quitting = true; app.quit(); });
+    console.log('MPRIS ready (org.mpris.MediaPlayer2.mintmusic)');
+  } catch (e) {
+    console.warn('MPRIS unavailable:', e.message);
+  }
+}
+ipcMain.handle('mpris-update', (_e, s) => {
+  if (!mpris) return;
+  try {
+    const st = (s && s.state) === 'playing' ? 'Playing' : (s && s.state) === 'paused' ? 'Paused' : 'Stopped';
+    mpris.playbackStatus = st;
+    if (s && s.title) {
+      mpris.metadata = {
+        'mpris:trackid': mpris.objectPath('track/' + (s.id || '0')),
+        'mpris:length': Math.round((s.duration || 0) * 1e6),
+        'xesam:title': s.title,
+        'xesam:artist': s.artist ? [s.artist] : ['MintMusic'],
+        'xesam:url': s.url || '',
+        ...(s.art ? { 'mpris:artUrl': s.art } : {})
+      };
+    }
+    if (s && typeof s.position === 'number') mprisPos = Math.round(s.position * 1e6);
+  } catch {}
+});
+
+ipcMain.handle('check-updates', async () => {
+  if (!app.isPackaged) return 'Dev mode — updates only work in the installed .deb.';
+  try {
+    const r = await autoUpdater.checkForUpdates();
+    return r && r.updateInfo ? 'Latest already installed (v' + r.updateInfo.version + ').' : 'No updates found.';
+  } catch (e) {
+    return 'Update check failed: ' + e.message;
+  }
 });
 
 // ---- keyless YouTube (Innertube) ----
