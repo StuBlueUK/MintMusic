@@ -19,6 +19,7 @@
   "build": {
     "appId": "uk.co.stubblue.mintmusic",
     "productName": "MintMusic",
+    "icon": "assets/icon.png",
     "files": [
       "*.js",
       "*.html",

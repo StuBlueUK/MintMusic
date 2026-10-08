@@ -330,6 +330,25 @@ document.getElementById('clearKey').onclick = () => {
   localStorage.removeItem('mm_yt_key'); document.getElementById('apiKey').value = '';
 };
 
+// ---- tray prefs (minimize / close to taskbar tray) ----
+(async () => {
+  try {
+    const p = await window.mintmusic.trayPrefsGet();
+    document.getElementById('trayMin').checked = !!p.minimizeToTray;
+    document.getElementById('trayClose').checked = !!p.closeToTray;
+  } catch {}
+})();
+async function pushTrayPrefs() {
+  try {
+    await window.mintmusic.trayPrefsSet({
+      minimizeToTray: document.getElementById('trayMin').checked,
+      closeToTray: document.getElementById('trayClose').checked
+    });
+  } catch {}
+}
+document.getElementById('trayMin').onchange = pushTrayPrefs;
+document.getElementById('trayClose').onchange = pushTrayPrefs;
+
 function renderResults(items) {
   lastResults = items || [];
   resultsEl.innerHTML = '';

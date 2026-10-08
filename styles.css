@@ -102,6 +102,8 @@ body {
 }
 .setlabel { display: block; font-size: 13px; color: var(--muted); margin: 8px 0; }
 .setlabel input { display: block; width: 100%; margin-top: 6px; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--text); margin: 6px 0; }
+.check input { accent-color: var(--accent); }
 #player { display: none; }
 #ytWrap { display: flex; justify-content: center; padding: 8px 4px 12px; }
 #ytWrap iframe { border-radius: 12px; border: 1px solid var(--glass-border); }
