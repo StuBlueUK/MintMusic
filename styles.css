@@ -103,7 +103,8 @@ body {
 .setlabel { display: block; font-size: 13px; color: var(--muted); margin: 8px 0; }
 .setlabel input { display: block; width: 100%; margin-top: 6px; }
 #player { display: none; }
-#ytWrap { position: fixed; width: 2px; height: 2px; left: -10px; bottom: -10px; opacity: 0.01; pointer-events: none; }
+#ytWrap { display: flex; justify-content: center; padding: 8px 4px 12px; }
+#ytWrap iframe { border-radius: 12px; border: 1px solid var(--glass-border); }
 .hint { color: var(--muted); font-size: 12px; text-align: center; padding: 10px; }
 .pl-head { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px; background: rgba(37,99,235,.15); border-radius: 10px; }
 .pl-head b { flex: 1; }
