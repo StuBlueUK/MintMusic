@@ -176,10 +176,13 @@ window.onYouTubeIframeAPIReady = () => {
     ytPlayer = new YT.Player('ytplayer', {
       height: '200', width: '320',
       host: 'https://www.youtube.com',
+      // NOTE: no `origin` / `widget_referrer` here on purpose. This page runs
+      // from file:// (origin "null"); passing a fake https origin makes the
+      // player post API events to the wrong targetOrigin, so the browser drops
+      // them and onReady never fires ("creating player…" forever). The error-153
+      // Referer fix lives in main.js (real HTTP header), not in these params.
       playerVars: {
-        autoplay: 0, controls: 1, disablekb: 0, fs: 0, rel: 0, playsinline: 1,
-        origin: 'https://uk.co.stubblue.mintmusic',
-        widget_referrer: 'https://uk.co.stubblue.mintmusic'
+        autoplay: 0, controls: 1, disablekb: 0, fs: 0, rel: 0, playsinline: 1
       },
       events: {
         onReady: e => {
@@ -225,6 +228,29 @@ window.onYouTubeIframeAPIReady = () => {
     setYtStatus('failed: ' + e.message);
     nowSub.textContent = 'YouTube player failed to load. Check network/adblock.';
   }
+  // Watchdog: created but YouTube never answered within 12s.
+  setTimeout(() => {
+    if (ytReady) return;
+    const dbg = document.getElementById('ytDebug');
+    let frame = '';
+    try {
+      const f = ytPlayer && ytPlayer.getIframe && ytPlayer.getIframe();
+      frame = f ? f.src.slice(0, 120) : '(no iframe)';
+    } catch (e) { frame = '(iframe unreadable: ' + e.message + ')'; }
+    if (dbg) dbg.textContent = 'Debug: YT lib=' + (window.YT ? 'yes' : 'no') + ' iframe=' + frame;
+    setYtStatus('created but no answer from YouTube — click Retry player.');
+    console.warn('YT watchdog: no onReady after 12s. iframe=', frame);
+  }, 12000);
+};
+document.getElementById('ytRetry').onclick = () => {
+  console.log('YT manual retry');
+  setYtStatus('retrying…');
+  try { ytPlayer && ytPlayer.destroy && ytPlayer.destroy(); } catch {}
+  ytPlayer = null; ytReady = false;
+  // destroy() removes the iframe; rebuild the mount div, then re-create.
+  const wrap = document.getElementById('ytWrap');
+  wrap.innerHTML = '<div id="ytplayer"></div>';
+  window.onYouTubeIframeAPIReady();
 };
 // Inject the API script now that the callback exists. If it was somehow already
 // present, call the callback directly instead of waiting.
