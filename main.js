@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, shell } = require('electron');
 const path = require('path');
 
 let win = null;
@@ -48,6 +48,11 @@ app.on('window-all-closed', () => {
 ipcMain.handle('pick-folder', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
   return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle('open-url', async (_e, url) => {
+  const u = String(url || '');
+  if (/^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(u)) await shell.openExternal(u);
 });
 
 // Keyless YouTube search via Innertube (public WEB client key — no user API key needed).

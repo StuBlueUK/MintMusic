@@ -72,13 +72,30 @@ function play(i) {
   const t = tracks[idx];
   pushHistory(t);
   notifyTrack(t);
+  document.getElementById('openYT').classList.toggle('hidden', t.kind !== 'yt');
   if (t.kind === 'yt') {
     stopFile();
     currentKind = 'yt';
     nowTitle.textContent = t.name;
-    nowSub.textContent = (t.channel || 'YouTube') + ' • audio only';
-    if (ytReady && ytPlayer && ytPlayer.loadVideoById) ytPlayer.loadVideoById(t.videoId);
-    else alert('YouTube player still loading — try again in a second.');
+    nowSub.textContent = (t.channel || 'YouTube') + ' • connecting… (audio only)';
+    if (ytReady && ytPlayer && ytPlayer.loadVideoById) {
+      try {
+        ytPlayer.loadVideoById(t.videoId);
+        // Click = user gesture, so unmute + play with sound (autoplay policy)
+        setTimeout(() => {
+          try {
+            if (ytPlayer.unMute) ytPlayer.unMute();
+            ytPlayer.setVolume(Number(vol.value));
+            ytPlayer.playVideo();
+          } catch (e) { console.warn('YT play failed', e); }
+        }, 300);
+      } catch (e) {
+        nowSub.textContent = 'Player error: ' + e.message;
+      }
+    } else {
+      nowSub.textContent = 'YouTube player still loading… wait 2s and click again.';
+      console.warn('YT not ready yet: ytReady=', ytReady);
+    }
   } else {
     stopYT();
     currentKind = 'file';
@@ -141,28 +158,55 @@ vol.oninput = () => {
 player.volume = (Number(localStorage.getItem('mm_vol')) || 80) / 100;
 vol.value = String(Number(localStorage.getItem('mm_vol')) || 80);
 
-// hidden YT IFrame (audio only — 2px, invisible)
+// hidden YT IFrame (audio only — full-size but off-screen so Chromium doesn't throttle it)
 window.onYouTubeIframeAPIReady = () => {
-  ytPlayer = new YT.Player('ytplayer', {
-    height: '2', width: '2',
-    playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0 },
-    events: {
-      onReady: () => { ytReady = true; ytPlayer.setVolume(Number(vol.value)); },
-      onStateChange: e => {
-        if (currentKind !== 'yt') return;
-        if (e.data === YT.PlayerState.PLAYING) {
-          setPlayingUI(true);
-          nowTitle.textContent = tracks[idx] ? tracks[idx].name : 'Playing';
-          tickYT();
-        }
-        else if (e.data === YT.PlayerState.PAUSED) setPlayingUI(false);
-        else if (e.data === YT.PlayerState.ENDED) {
-          if (repeatMode === 'one') play(idx);
-          else handleEnded();
+  console.log('YT API ready');
+  try {
+    ytPlayer = new YT.Player('ytplayer', {
+      height: '180', width: '320',
+      playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0, playsinline: 1 },
+      events: {
+        onReady: e => {
+          ytReady = true;
+          try { e.target.setVolume(Number(vol.value)); } catch {}
+          console.log('YT player ready');
+          nowSub.textContent = nowSub.textContent.replace(' • connecting…', '');
+        },
+        onAutoplayBlocked: () => {
+          console.warn('YT autoplay blocked — unmuting + retry');
+          try { ytPlayer.unMute(); ytPlayer.playVideo(); } catch {}
+        },
+        onError: e => {
+          console.warn('YT error', e.data);
+          const t = tracks[idx];
+          const code = e.data;
+          const msg = code === 101 || code === 150 ? 'This video blocks embedding (label restriction).'
+            : code === 100 ? 'Video not found/private.'
+            : 'YouTube error ' + code + '.';
+          nowSub.textContent = msg + ' Use ↗ YouTube.';
+          setPlayingUI(false);
+          document.getElementById('openYT').classList.remove('hidden');
+        },
+        onStateChange: e => {
+          if (currentKind !== 'yt') return;
+          if (e.data === YT.PlayerState.PLAYING) {
+            setPlayingUI(true);
+            nowTitle.textContent = tracks[idx] ? tracks[idx].name : 'Playing';
+            nowSub.textContent = ((tracks[idx] && tracks[idx].channel) || 'YouTube') + ' • audio only';
+            tickYT();
+          }
+          else if (e.data === YT.PlayerState.PAUSED) setPlayingUI(false);
+          else if (e.data === YT.PlayerState.ENDED) {
+            if (repeatMode === 'one') play(idx);
+            else handleEnded();
+          }
         }
       }
-    }
-  });
+    });
+  } catch (e) {
+    console.error('YT player create failed', e);
+    nowSub.textContent = 'YouTube player failed to load. Check network/adblock.';
+  }
 };
 function tickYT() {
   if (currentKind !== 'yt' || !ytPlayer || !ytPlayer.getDuration) return;
@@ -348,6 +392,13 @@ document.getElementById('lyricsBtn').onclick = async () => {
 };
 document.getElementById('lyricsClose').onclick = () => lyricsModal.classList.add('hidden');
 lyricsModal.onclick = e => { if (e.target === lyricsModal) lyricsModal.classList.add('hidden'); };
+
+document.getElementById('openYT').onclick = () => {
+  const t = tracks[idx];
+  if (t && t.videoId && window.mintmusic && window.mintmusic.openUrl) {
+    window.mintmusic.openUrl('https://www.youtube.com/watch?v=' + t.videoId);
+  }
+};
 
 // ---- media keys from main ----
 if (window.mintmusic && window.mintmusic.onMediaKey) {
