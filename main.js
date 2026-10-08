@@ -5,6 +5,14 @@ const path = require('path');
 // file:// sends none, so spoof it + match origin/widget_referrer in the player.
 const APP_REFERER = 'https://uk.co.stubblue.mintmusic/';
 
+// Audio-first app: no need for GPU compositing / VA-API video decode.
+// This also silences harmless Intel libva errors (iHD_drv_video.so init failed)
+// on machines whose iGPU (e.g. Haswell) needs the i965 driver instead.
+app.disableHardwareAcceleration();
+// Stop Chromium probing VA-API (the source of the iHD_drv_video.so error);
+// software decode is plenty for a 320x200 player.
+app.commandLine.appendSwitch('disable-features', 'VaapiVideoDecoder,VaapiVideoEncoder');
+
 let win = null;
 
 function createWindow() {

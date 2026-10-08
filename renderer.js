@@ -28,7 +28,7 @@ document.querySelectorAll('.tab').forEach(b => {
   b.onclick = () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
-    ['results', 'queue', 'playlists', 'settings'].forEach(t =>
+    ['results', 'video', 'queue', 'playlists', 'settings'].forEach(t =>
       document.getElementById('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
   };
 });
@@ -73,6 +73,8 @@ function play(i) {
   pushHistory(t);
   notifyTrack(t);
   document.getElementById('openYT').classList.toggle('hidden', t.kind !== 'yt');
+  const videoTab = document.querySelector('[data-tab="video"]');
+  if (videoTab) videoTab.textContent = t.kind === 'yt' ? 'Video ●' : 'Video';
   if (t.kind === 'yt') {
     stopFile();
     currentKind = 'yt';

@@ -52,6 +52,7 @@
 
   <div class="tabs">
     <button class="btn tab active" data-tab="results">Search</button>
+    <button class="btn tab" data-tab="video">Video</button>
     <button class="btn tab" data-tab="queue">Queue</button>
     <button class="btn tab" data-tab="playlists">Playlists</button>
     <button class="btn tab" data-tab="settings">Settings</button>
@@ -108,10 +109,13 @@
   </div>
 </div>
 
-<div class="glass panel" id="videoPanel">
-  <h3>Player (YouTube requires a visible player — keep it on screen)</h3>
-  <div id="ytWrap"><div id="ytplayer"></div></div>
+<div class="glass panel hidden" id="tab-video">
+  <h3>Video <small style="text-transform:none">(YouTube requires the player to exist — audio keeps playing when viewing other tabs)</small></h3>
+  <div id="videoPanel">
+    <div id="ytWrap"><div id="ytplayer"></div></div>
+  </div>
 </div>
+
 <div id="lyricsModal" class="hidden">
   <div class="glass lyrics-box">
     <div class="lyrics-head"><b id="lyricsTitle">Lyrics</b><button class="btn" id="lyricsClose">Close</button></div>
