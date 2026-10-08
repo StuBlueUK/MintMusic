@@ -646,13 +646,15 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// ---- random mix: random genres -> keyless search -> shuffled queue ----
-const MIX_GENRES = ['synthwave', 'lofi hip hop', 'jazz bossa nova', 'classical piano', 'indie folk',
-  'ambient chill', 'funk soul', 'reggae dub', 'acoustic rock', 'electro swing', 'trip hop',
-  'progressive house', 'motown', 'bluegrass', 'k-pop', 'afrobeats', 'shoegaze', 'drum and bass'];
+// ---- random mix: selected genre + 2 related -> keyless search -> shuffled queue ----
+const MIX_GENRES = ['britpop', 'uk garage', 'grime', 'drum and bass', 'uk hip hop',
+  'northern soul', 'madchester', 'shoegaze', 'uk folk', 'dubstep', 'jungle',
+  '2-tone ska', 'trip hop', 'post-punk', 'uk indie', 'afroswing', 'uk drill', 'brit funk'];
 document.getElementById('randomMix').onclick = async () => {
   if (!window.mintmusic || !window.mintmusic.searchYouTube) { alert('Player not ready yet.'); return; }
-  const picks = [...MIX_GENRES].sort(() => Math.random() - 0.5).slice(0, 3);
+  const chosen = document.getElementById('genre').value || MIX_GENRES[0];
+  const others = MIX_GENRES.filter(g => g !== chosen).sort(() => Math.random() - 0.5).slice(0, 2);
+  const picks = [chosen, ...others];
   resultsEl.innerHTML = `<div class="hint">🎲 Rolling a mix from: ${escapeHtml(picks.join(' • '))}…</div>`;
   try {
     const all = [];
