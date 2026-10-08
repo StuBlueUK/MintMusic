@@ -183,42 +183,54 @@ document.getElementById('clearKey').onclick = () => {
   localStorage.removeItem('mm_yt_key'); document.getElementById('apiKey').value = '';
 };
 
+function renderResults(items) {
+  resultsEl.innerHTML = '';
+  if (!items.length) { resultsEl.innerHTML = '<div class="hint">No results.</div>'; return; }
+  items.forEach(v => {
+    const id = v.videoId;
+    const div = document.createElement('div');
+    div.className = 'res-item';
+    div.innerHTML = `${v.thumb ? `<img src="${v.thumb}">` : ''}<div class="meta"><b>${escapeHtml(v.title)}</b><span>${escapeHtml(v.channel || '')}${v.duration ? ' • ' + escapeHtml(v.duration) : ''}</span></div>`;
+    const acts = document.createElement('div');
+    acts.className = 'acts';
+    const bPlay = document.createElement('button'); bPlay.className = 'btn primary'; bPlay.textContent = '▶';
+    bPlay.title = 'Play now (audio only)';
+    bPlay.onclick = e => { e.stopPropagation(); tracks.push({ kind: 'yt', name: v.title, videoId: id, channel: v.channel }); play(tracks.length - 1); };
+    const bQ = document.createElement('button'); bQ.className = 'btn'; bQ.textContent = '+ Queue';
+    bQ.onclick = e => { e.stopPropagation(); tracks.push({ kind: 'yt', name: v.title, videoId: id, channel: v.channel }); render(); };
+    const bPl = document.createElement('button'); bPl.className = 'btn'; bPl.textContent = '+ Playlist';
+    bPl.onclick = e => { e.stopPropagation(); addToPlaylistPrompt({ kind: 'yt', name: v.title, videoId: id, channel: v.channel }); };
+    acts.append(bPlay, bQ, bPl);
+    div.appendChild(acts);
+    div.onclick = () => { tracks.push({ kind: 'yt', name: v.title, videoId: id, channel: v.channel }); play(tracks.length - 1); };
+    resultsEl.appendChild(div);
+  });
+}
+
 async function doSearch() {
   const q = document.getElementById('search').value.trim();
   if (!q) return;
   const key = getKey();
-  if (!key) {
-    resultsEl.innerHTML = '<div class="hint">Add your YouTube Data API key in Settings first (free).</div>';
-    document.querySelector('[data-tab="settings"]').click();
-    return;
+  resultsEl.innerHTML = '<div class="hint">Searching… (no key needed)</div>';
+  // 1) Keyless via main (Innertube + Piped fallback) — default, no key required
+  try {
+    if (window.mintmusic && window.mintmusic.searchYouTube) {
+      const items = await window.mintmusic.searchYouTube(q);
+      if (items && items.length) { renderResults(items); return; }
+    }
+  } catch (e) {
+    // fall through to Data API key if available
+    if (!key) { resultsEl.innerHTML = `<div class="hint">Keyless search failed: ${escapeHtml(e.message)}</div>`; return; }
   }
-  resultsEl.innerHTML = '<div class="hint">Searching…</div>';
+  // 2) Official Data API (only if user added a key — higher reliability)
+  if (!key) { resultsEl.innerHTML = '<div class="hint">Keyless search returned nothing. Add a Data API key in Settings as backup.</div>'; return; }
   try {
     const s = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=15&q=${encodeURIComponent(q)}&key=${key}`).then(r => r.json());
     if (s.error) throw new Error(s.error.message);
     const ids = s.items.map(i => i.id.videoId).join(',');
     const d = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails,snippet&id=${ids}&key=${key}`).then(r => r.json());
     const dur = {}; (d.items || []).forEach(v => dur[v.id] = v.contentDetails.duration);
-    resultsEl.innerHTML = '';
-    s.items.forEach(v => {
-      const id = v.id.videoId;
-      const div = document.createElement('div');
-      div.className = 'res-item';
-      div.innerHTML = `<img src="${v.snippet.thumbnails.medium.url}"><div class="meta"><b>${escapeHtml(v.snippet.title)}</b><span>${escapeHtml(v.snippet.channelTitle)} • ${dur[id] || ''}</span></div>`;
-      const acts = document.createElement('div');
-      acts.className = 'acts';
-      const bPlay = document.createElement('button'); bPlay.className = 'btn primary'; bPlay.textContent = '▶';
-      bPlay.title = 'Play now (audio only)';
-      bPlay.onclick = e => { e.stopPropagation(); tracks.push({ kind: 'yt', name: v.snippet.title, videoId: id, channel: v.snippet.channelTitle }); play(tracks.length - 1); };
-      const bQ = document.createElement('button'); bQ.className = 'btn'; bQ.textContent = '+ Queue';
-      bQ.onclick = e => { e.stopPropagation(); tracks.push({ kind: 'yt', name: v.snippet.title, videoId: id, channel: v.snippet.channelTitle }); render(); };
-      const bPl = document.createElement('button'); bPl.className = 'btn'; bPl.textContent = '+ Playlist';
-      bPl.onclick = e => { e.stopPropagation(); addToPlaylistPrompt({ kind: 'yt', name: v.snippet.title, videoId: id, channel: v.snippet.channelTitle }); };
-      acts.append(bPlay, bQ, bPl);
-      div.appendChild(acts);
-      div.onclick = () => { tracks.push({ kind: 'yt', name: v.snippet.title, videoId: id, channel: v.snippet.channelTitle }); play(tracks.length - 1); };
-      resultsEl.appendChild(div);
-    });
+    renderResults(s.items.map(v => ({ videoId: v.id.videoId, title: v.snippet.title, channel: v.snippet.channelTitle, duration: dur[v.id.videoId] || '', thumb: v.snippet.thumbnails?.medium?.url || '' })));
   } catch (err) {
     resultsEl.innerHTML = `<div class="hint">Search failed: ${escapeHtml(err.message)}</div>`;
   }
