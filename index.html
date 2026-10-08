@@ -3,32 +3,55 @@
 <head>
 <meta charset="UTF-8">
 <title>MintMusic</title>
-<style>
-  body { font-family: sans-serif; background: #1a1a1a; color: #eee; margin: 0; padding: 20px; }
-  h1 { font-size: 20px; }
-  #drop { border: 2px dashed #555; border-radius: 12px; padding: 30px; text-align: center; color: #aaa; margin: 20px 0; }
-  #playlist { list-style: none; padding: 0; }
-  #playlist li { padding: 8px 12px; border-bottom: 1px solid #333; cursor: pointer; }
-  #playlist li.playing { background: #2e7d32; }
-  #playlist li:hover { background: #333; }
-  #controls { margin: 16px 0; display: flex; gap: 8px; align-items: center; }
-  button { background: #333; color: #eee; border: 1px solid #555; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
-  button:hover { background: #444; }
-  audio { width: 100%; margin-top: 12px; }
-</style>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<h1>MintMusic — local player</h1>
-<div id="drop">Drop music files/folder here or <button id="pick">Pick folder</button> <button id="files">Pick files</button>
-<input type="file" id="fileInput" accept="audio/*" multiple style="display:none">
+<div class="orb orb1"></div>
+<div class="orb orb2"></div>
+<div class="app">
+  <div class="topbar">
+    <div class="logo">🎵</div>
+    <div class="title"><h1>MintMusic</h1><small>audio only • no video</small></div>
+    <div class="search">
+      <input id="search" type="search" placeholder="Search YouTube music… (coming soon)  •  / to focus">
+    </div>
+  </div>
+
+  <div class="glass now-playing">
+    <div class="disc" id="disc"></div>
+    <div class="track-info">
+      <h2 id="nowTitle">Nothing playing</h2>
+      <p id="nowSub">Drop audio files below to start</p>
+      <div class="progress">
+        <span id="tCur">0:00</span>
+        <input id="seek" type="range" min="0" max="1000" value="0">
+        <span id="tDur">0:00</span>
+      </div>
+      <div class="controls">
+        <button class="btn" id="prev" title="Previous">⏮</button>
+        <button class="btn primary" id="playBtn" title="Play/Pause (Space)">▶ Play</button>
+        <button class="btn" id="next" title="Next">⏭</button>
+        <button class="btn" id="shuffleBtn" title="Shuffle">🔀</button>
+        <div class="vol">🔊 <input id="vol" type="range" min="0" max="100" value="80"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="glass panel">
+    <h3>Queue</h3>
+    <div class="drop" id="drop">
+      Drag &amp; drop audio files here
+      <div class="row">
+        <button class="btn" id="files">Pick files</button>
+        <button class="btn" id="pick">Pick folder</button>
+      </div>
+      <input type="file" id="fileInput" accept="audio/*,.mp3,.ogg,.wav,.flac,.m4a" multiple hidden>
+    </div>
+    <ul id="playlist"></ul>
+    <div class="hint">Audio-only player — no video window. YouTube search + playlists land here next.</div>
+  </div>
 </div>
-<div id="controls">
-  <button id="prev">⏮ Prev</button>
-  <button id="next">Next ⏭</button>
-  <span id="now"></span>
-</div>
-<ul id="playlist"></ul>
-<audio id="player" controls></audio>
+<audio id="player"></audio>
 <script src="renderer.js"></script>
 </body>
 </html>

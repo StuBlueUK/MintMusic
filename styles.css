@@ -1,0 +1,91 @@
+/* MintMusic — dark blue glassy, audio-only */
+:root {
+  --bg0: #060d1f;
+  --bg1: #0a1931;
+  --glass: rgba(30, 64, 175, 0.18);
+  --glass-border: rgba(147, 197, 253, 0.25);
+  --accent: #60a5fa;
+  --accent2: #38bdf8;
+  --text: #e8eefc;
+  --muted: #93a4c4;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: var(--text);
+  background: radial-gradient(1200px 800px at 20% -10%, #1e3a8a 0%, transparent 60%),
+              radial-gradient(1000px 700px at 110% 20%, #0c4a6e 0%, transparent 55%),
+              linear-gradient(180deg, var(--bg1), var(--bg0));
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+.orb { position: fixed; border-radius: 50%; filter: blur(90px); opacity: 0.5; pointer-events: none; z-index: 0; }
+.orb1 { width: 420px; height: 420px; background: #1d4ed8; top: -120px; left: -100px; }
+.orb2 { width: 380px; height: 380px; background: #0369a1; bottom: -140px; right: -80px; }
+
+.app { position: relative; z-index: 1; max-width: 960px; margin: 0 auto; padding: 24px; }
+.topbar { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; }
+.logo { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 22px;
+  background: linear-gradient(135deg, #3b82f6, #0ea5e9); box-shadow: 0 4px 24px rgba(59,130,246,.5); }
+.title h1 { margin: 0; font-size: 20px; letter-spacing: .3px; }
+.title small { color: var(--muted); }
+.search { margin-left: auto; display: flex; gap: 8px; flex: 1; max-width: 420px; justify-content: flex-end; }
+.search input {
+  width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--glass-border);
+  background: var(--glass); color: var(--text); outline: none; backdrop-filter: blur(16px);
+}
+.search input::placeholder { color: var(--muted); }
+
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: 0 8px 32px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08);
+}
+.now-playing { display: flex; gap: 18px; padding: 20px; align-items: center; }
+.disc {
+  width: 96px; height: 96px; border-radius: 50%; flex-shrink: 0;
+  background: conic-gradient(from 0deg, #1e40af, #0ea5e9, #1e3a8a, #1e40af);
+  display: grid; place-items: center; position: relative;
+  box-shadow: 0 0 0 1px var(--glass-border), 0 8px 24px rgba(0,0,0,.5);
+}
+.disc::after { content: ''; width: 28px; height: 28px; border-radius: 50%; background: #0a1931; border: 2px solid var(--glass-border); }
+.disc.spinning { animation: spin 6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.track-info { flex: 1; min-width: 0; }
+.track-info h2 { margin: 0 0 4px; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.track-info p { margin: 0; color: var(--muted); font-size: 13px; }
+.progress { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+.progress span { font-size: 12px; color: var(--muted); min-width: 40px; }
+#seek { flex: 1; accent-color: var(--accent); }
+.controls { display: flex; gap: 10px; margin-top: 12px; align-items: center; }
+.btn {
+  border: 1px solid var(--glass-border); background: rgba(96,165,250,.15); color: var(--text);
+  border-radius: 12px; padding: 9px 14px; cursor: pointer; font-size: 14px; backdrop-filter: blur(10px);
+}
+.btn:hover { background: rgba(96,165,250,.28); }
+.btn.primary { background: linear-gradient(135deg, #2563eb, #0ea5e9); border: none; font-weight: 600; box-shadow: 0 4px 16px rgba(37,99,235,.5); }
+.btn.primary:hover { filter: brightness(1.1); }
+.vol { display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--muted); }
+.vol input { accent-color: var(--accent); width: 90px; }
+
+.panel { margin-top: 16px; padding: 16px 16px 8px; }
+.panel h3 { margin: 4px 4px 12px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.drop {
+  border: 1.5px dashed var(--glass-border); border-radius: 14px; padding: 18px; text-align: center;
+  color: var(--muted); background: rgba(10,25,49,.4); margin-bottom: 12px;
+}
+.drop .row { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+#playlist { list-style: none; padding: 0; margin: 0; max-height: 300px; overflow-y: auto; }
+#playlist li {
+  padding: 10px 12px; border-radius: 12px; cursor: pointer; display: flex; gap: 10px; align-items: center;
+  border: 1px solid transparent;
+}
+#playlist li:hover { background: rgba(96,165,250,.12); }
+#playlist li.playing { background: rgba(37,99,235,.3); border-color: var(--glass-border); }
+#playlist li .n { color: var(--muted); font-size: 12px; min-width: 24px; }
+#player { display: none; } /* custom controls only — audio, no video */
+.hint { color: var(--muted); font-size: 12px; text-align: center; padding: 10px; }
