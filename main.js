@@ -1,8 +1,10 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electron');
 const path = require('path');
 
+let win = null;
+
 function createWindow() {
-  const win = new BrowserWindow({
+  win = new BrowserWindow({
     width: 980,
     height: 720,
     backgroundColor: '#0a1931',
@@ -17,13 +19,27 @@ function createWindow() {
   win.loadFile('index.html');
 }
 
+function sendMedia(action) {
+  if (win && !win.isDestroyed()) win.webContents.send('media-key', action);
+}
+
 app.whenReady().then(() => {
   createWindow();
+
+  // Media keys (Linux: XF86 + generic). Fail silently if taken by system.
+  try {
+    globalShortcut.register('MediaPlayPause', () => sendMedia('toggle'));
+    globalShortcut.register('MediaNextTrack', () => sendMedia('next'));
+    globalShortcut.register('MediaPreviousTrack', () => sendMedia('prev'));
+    globalShortcut.register('MediaStop', () => sendMedia('pause'));
+  } catch {}
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+app.on('will-quit', () => globalShortcut.unregisterAll());
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

@@ -33,6 +33,16 @@
         <button class="btn primary" id="playBtn" title="Play/Pause (Space)">▶ Play</button>
         <button class="btn" id="next" title="Next">⏭</button>
         <button class="btn" id="shuffleBtn" title="Shuffle">🔀</button>
+        <button class="btn" id="lyricsBtn" title="Lyrics">📝</button>
+        <select id="sleep" title="Sleep timer">
+          <option value="0">Sleep: off</option>
+          <option value="5">Sleep 5m</option>
+          <option value="15">Sleep 15m</option>
+          <option value="30">Sleep 30m</option>
+          <option value="60">Sleep 60m</option>
+          <option value="90">Sleep 90m</option>
+        </select>
+        <span id="sleepLeft" class="sleeplabel"></span>
         <div class="vol">🔊 <input id="vol" type="range" min="0" max="100" value="80"></div>
       </div>
     </div>
@@ -85,6 +95,14 @@
     <div class="hint">Key is stored locally (localStorage v0.2, moves to OS keyring later). Search costs ~100 quota units; free tier = ~100 searches/day. Without a key, search is disabled.</div>
   </div>
 </div>
+
+<div id="lyricsModal" class="hidden">
+  <div class="glass lyrics-box">
+    <div class="lyrics-head"><b id="lyricsTitle">Lyrics</b><button class="btn" id="lyricsClose">Close</button></div>
+    <div id="lyricsBody">No track.</div>
+  </div>
+</div>
+
 <div id="ytWrap"><div id="ytplayer"></div></div>
 <audio id="player"></audio>
 <script src="https://www.youtube.com/iframe_api"></script>

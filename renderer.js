@@ -260,9 +260,69 @@ function addToPlaylistPrompt(track) {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) { e.preventDefault(); toggle(); }
+  if (e.code === 'Space' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) { e.preventDefault(); toggle(); }
   if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); document.getElementById('search').focus(); }
 });
+
+// ---- sleep timer ----
+let sleepTimer = null, sleepEnd = 0, sleepTick = null;
+const sleepSel = document.getElementById('sleep');
+const sleepLeft = document.getElementById('sleepLeft');
+function clearSleep() {
+  if (sleepTimer) clearTimeout(sleepTimer);
+  if (sleepTick) clearInterval(sleepTick);
+  sleepTimer = sleepTick = null; sleepLeft.textContent = '';
+}
+sleepSel.onchange = () => {
+  clearSleep();
+  const mins = Number(sleepSel.value);
+  if (!mins) return;
+  sleepEnd = Date.now() + mins * 60000;
+  const pauseAll = () => { stopYT(); player.pause(); setPlayingUI(false); sleepSel.value = '0'; };
+  sleepTimer = setTimeout(pauseAll, mins * 60000);
+  const upd = () => {
+    const ms = sleepEnd - Date.now();
+    if (ms <= 0) { sleepLeft.textContent = ''; return; }
+    sleepLeft.textContent = Math.floor(ms / 60000) + ':' + String(Math.floor(ms % 60000 / 1000)).padStart(2, '0');
+  };
+  upd();
+  sleepTick = setInterval(upd, 1000);
+};
+
+// ---- lyrics via lrclib.net ----
+const lyricsModal = document.getElementById('lyricsModal');
+const lyricsBody = document.getElementById('lyricsBody');
+const lyricsTitle = document.getElementById('lyricsTitle');
+document.getElementById('lyricsBtn').onclick = async () => {
+  const t = tracks[idx];
+  if (!t) { alert('Nothing playing.'); return; }
+  lyricsTitle.textContent = t.name;
+  lyricsBody.textContent = 'Loading…';
+  lyricsModal.classList.remove('hidden');
+  try {
+    // heuristic: "Artist - Title" split, else whole as track
+    let artist = t.channel || '', title = t.name;
+    const m = t.name.split(' - ');
+    if (m.length >= 2) { artist = m[0].trim(); title = m.slice(1).join(' - ').trim(); }
+    const url = `https://lrclib.net/api/get?${artist ? 'artist_name=' + encodeURIComponent(artist) + '&' : ''}track_name=${encodeURIComponent(title)}`;
+    const r = await fetch(url).then(r => r.json());
+    lyricsBody.textContent = r.plainLyrics || r.syncedLyrics?.replace(/\[\d+:\d+\.\d+\]/g, '') || 'No lyrics found for this track.';
+  } catch (e) {
+    lyricsBody.textContent = 'Lyrics fetch failed: ' + e.message;
+  }
+};
+document.getElementById('lyricsClose').onclick = () => lyricsModal.classList.add('hidden');
+lyricsModal.onclick = e => { if (e.target === lyricsModal) lyricsModal.classList.add('hidden'); };
+
+// ---- media keys from main ----
+if (window.mintmusic && window.mintmusic.onMediaKey) {
+  window.mintmusic.onMediaKey(action => {
+    if (action === 'toggle') toggle();
+    else if (action === 'next') play(idx + 1);
+    else if (action === 'prev') play(idx - 1);
+    else if (action === 'pause') { stopYT(); player.pause(); }
+  });
+}
 
 render();
 renderPls();
