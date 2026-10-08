@@ -49,3 +49,65 @@ ipcMain.handle('pick-folder', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
   return result.canceled ? null : result.filePaths[0];
 });
+
+// Keyless YouTube search via Innertube (public WEB client key — no user API key needed).
+// Falls back to Piped public instances if Innertube is blocked.
+function collectVideos(node, out) {
+  if (!node || out.length >= 20) return;
+  if (Array.isArray(node)) {
+    for (const v of node) { collectVideos(v, out); if (out.length >= 20) return; }
+    return;
+  }
+  if (typeof node === 'object') {
+    if (node.videoRenderer && node.videoRenderer.videoId) {
+      const vr = node.videoRenderer;
+      const title = vr.title?.runs?.map(r => r.text).join('') || vr.title?.simpleText || 'Unknown';
+      const channel = vr.ownerText?.runs?.map(r => r.text).join('') || vr.ownerText?.simpleText || '';
+      const dur = vr.lengthText?.simpleText || '';
+      const thumbs = vr.thumbnail?.thumbnails || [];
+      const thumb = thumbs.length ? thumbs[thumbs.length - 1].url : '';
+      out.push({ videoId: vr.videoRenderer?.videoId || vr.videoId, title, channel, duration: dur, thumb });
+      return;
+    }
+    for (const k of Object.keys(node)) { collectVideos(node[k], out); if (out.length >= 20) return; }
+  }
+}
+
+ipcMain.handle('yt-search', async (_e, query) => {
+  const q = String(query || '').slice(0, 100);
+  if (!q) return [];
+  // 1) Innertube
+  try {
+    const r = await fetch('https://www.youtube.com/youtubei/v1/search?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, query: q, params: 'EgIQAQ%3D%3D' })
+    });
+    if (r.ok) {
+      const j = await r.json();
+      const out = [];
+      collectVideos(j, out);
+      if (out.length) return out.slice(0, 15);
+    }
+  } catch {}
+  // 2) Piped fallback instances
+  const instances = ['https://pipedapi.kavin.rocks', 'https://pipedapi.adminforge.de', 'https://api-piped.mha.fi'];
+  for (const base of instances) {
+    try {
+      const r = await fetch(`${base}/search?q=${encodeURIComponent(q)}&filter=videos`);
+      if (!r.ok) continue;
+      const j = await r.json();
+      const items = (j.items || j).filter(i => i.url && i.url.includes('/watch'));
+      if (items.length) {
+        return items.slice(0, 15).map(i => ({
+          videoId: (i.url.match(/v=([^&]+)/) || [])[1] || i.url,
+          title: i.title || 'Unknown',
+          channel: i.uploaderName || '',
+          duration: i.duration ? new Date(i.duration * 1000).toISOString().slice(11, 19).replace(/^00:/, '') : '',
+          thumb: i.thumbnail || ''
+        }));
+      }
+    } catch {}
+  }
+  throw new Error('Keyless search failed (network blocked?). Add a Data API key in Settings as backup.');
+});

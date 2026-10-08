@@ -62,7 +62,7 @@
       <input id="ytPlUrl" placeholder="Paste YouTube playlist URL to import…">
       <button class="btn" id="ytPlImport">Import playlist</button>
     </div>
-    <div id="results"><div class="hint">Search for music above. Needs a free YouTube Data API key (Settings tab).</div></div>
+    <div id="results"><div class="hint">Search for music above — no key needed. Optional API key in Settings for backup.</div></div>
   </div>
 
   <div class="glass panel hidden" id="tab-queue">
@@ -96,8 +96,8 @@
 
   <div class="glass panel hidden" id="tab-settings">
     <h3>Settings</h3>
-    <label class="setlabel">YouTube Data API v3 key (free, Google Cloud Console → enable YouTube Data API v3):
-      <input id="apiKey" placeholder="AIza…" autocomplete="off">
+    <label class="setlabel">YouTube Data API v3 key (optional backup — search works without it):
+      <input id="apiKey" placeholder="Optional — leave empty" autocomplete="off">
     </label>
     <div class="rowflex">
       <button class="btn primary" id="saveKey">Save key</button>
