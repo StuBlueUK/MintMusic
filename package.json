@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --linux deb"
+    "dist": "electron-builder --linux deb --publish never"
   },
   "author": "",
   "license": "GPL-3.0-or-later",
@@ -14,7 +14,8 @@
     "electron-builder": "^25.1.8"
   },
   "allowScripts": {
-    "electron@33.4.11": true
+    "electron@33.4.11": true,
+    "abstract-socket@2.1.1": true
   },
   "build": {
     "appId": "uk.co.stubblue.mintmusic",
@@ -27,10 +28,21 @@
       "assets/**/*"
     ],
     "linux": {
-      "target": ["deb"],
+      "target": [
+        "deb"
+      ],
       "category": "AudioVideo",
       "maintainer": "MintMusic",
       "description": "Audio-only YouTube music player for Linux Mint"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "StuBlueUK",
+      "repo": "MintMusic"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "mpris-service": "^2.1.2"
   }
 }
