@@ -109,8 +109,8 @@ body {
 .pl-head { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px; background: rgba(37,99,235,.15); border-radius: 10px; }
 .pl-head b { flex: 1; }
 .pl-tracks { margin-left: 12px; font-size: 13px; color: var(--muted); }
-#sleep { background: rgba(96,165,250,.15); color: var(--text); border: 1px solid var(--glass-border); border-radius: 12px; padding: 8px; }
-#sleep option { color: #111; }
+#sleep, #genre { background: rgba(96,165,250,.15); color: var(--text); border: 1px solid var(--glass-border); border-radius: 12px; padding: 8px; }
+#sleep option, #genre option { color: #111; }
 .sleeplabel { font-size: 12px; color: var(--accent2); min-width: 40px; }
 #lyricsModal { position: fixed; inset: 0; background: rgba(3,8,20,.7); display: grid; place-items: center; z-index: 10; padding: 20px; }
 #lyricsModal.hidden { display: none; }
