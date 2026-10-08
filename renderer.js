@@ -95,7 +95,7 @@ function play(i) {
         nowSub.textContent = 'Player error: ' + e.message;
       }
     } else {
-      nowSub.textContent = 'YouTube player still loading… wait 2s and click again.';
+      nowSub.textContent = 'YouTube player still loading… see Video tab for status, then click again.';
       console.warn('YT not ready yet: ytReady=', ytReady);
     }
   } else {
@@ -160,10 +160,18 @@ vol.oninput = () => {
 player.volume = (Number(localStorage.getItem('mm_vol')) || 80) / 100;
 vol.value = String(Number(localStorage.getItem('mm_vol')) || 80);
 
-// YouTube IFrame player — visible 320x200 (YouTube requires >=200x200 visible;
-// hidden/off-screen players get error 153 + violate embed terms)
+// YouTube IFrame player (visible 320x200 in the Video tab — YouTube requires
+// >=200x200 visible; hidden players get throttled / error 153).
+// NOTE: the API script is injected AFTER this callback is defined (docs pattern).
+// Previously the <script> tag came first, so a fast/cached download could fire
+// before the callback existed — player never initialised ("wait 2s" forever).
+function setYtStatus(s) {
+  const el = document.getElementById('ytStatus');
+  if (el) el.textContent = 'Player: ' + s;
+}
 window.onYouTubeIframeAPIReady = () => {
   console.log('YT API ready');
+  setYtStatus('loaded, creating player…');
   try {
     ytPlayer = new YT.Player('ytplayer', {
       height: '200', width: '320',
@@ -178,6 +186,7 @@ window.onYouTubeIframeAPIReady = () => {
           ytReady = true;
           try { e.target.setVolume(Number(vol.value)); } catch {}
           console.log('YT player ready');
+          setYtStatus('ready ✓');
         },
         onAutoplayBlocked: () => {
           console.warn('YT autoplay blocked — unmuting + retry');
@@ -213,9 +222,31 @@ window.onYouTubeIframeAPIReady = () => {
     });
   } catch (e) {
     console.error('YT player create failed', e);
+    setYtStatus('failed: ' + e.message);
     nowSub.textContent = 'YouTube player failed to load. Check network/adblock.';
   }
 };
+// Inject the API script now that the callback exists. If it was somehow already
+// present, call the callback directly instead of waiting.
+(function loadYTAPI() {
+  setYtStatus('loading…');
+  if (window.YT && window.YT.Player) {
+    console.log('YT API already present');
+    window.onYouTubeIframeAPIReady();
+    return;
+  }
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  tag.onerror = () => {
+    console.error('YT API script failed to load');
+    setYtStatus('failed to load — check network/adblock, then restart the app.');
+  };
+  document.head.appendChild(tag);
+  // Safety net: if the callback never fires (blocked/slow network), say so.
+  setTimeout(() => {
+    if (!ytReady && !ytPlayer) setYtStatus('still loading… if stuck, check network/adblock and restart.');
+  }, 8000);
+})();
 function tickYT() {
   if (currentKind !== 'yt' || !ytPlayer || !ytPlayer.getDuration) return;
   const d = ytPlayer.getDuration() || 0, c = ytPlayer.getCurrentTime() || 0;
