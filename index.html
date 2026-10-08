@@ -112,6 +112,7 @@
 <div class="glass panel hidden" id="tab-video">
   <h3>Video <small style="text-transform:none">(YouTube requires the player to exist — audio keeps playing when viewing other tabs)</small></h3>
   <div id="videoPanel">
+    <div id="ytStatus" class="hint">Player: loading…</div>
     <div id="ytWrap"><div id="ytplayer"></div></div>
   </div>
 </div>
@@ -125,7 +126,7 @@
 
 <div id="ytWrapOld" style="display:none"></div>
 <audio id="player"></audio>
-<script src="https://www.youtube.com/iframe_api"></script>
+<!-- YT IFrame API is injected by renderer.js AFTER defining onYouTubeIframeAPIReady (docs pattern) -->
 <script src="renderer.js"></script>
 </body>
 </html>
