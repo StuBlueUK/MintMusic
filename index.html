@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>MintMusic</title>
+<style>
+  body { font-family: sans-serif; background: #1a1a1a; color: #eee; margin: 0; padding: 20px; }
+  h1 { font-size: 20px; }
+  #drop { border: 2px dashed #555; border-radius: 12px; padding: 30px; text-align: center; color: #aaa; margin: 20px 0; }
+  #playlist { list-style: none; padding: 0; }
+  #playlist li { padding: 8px 12px; border-bottom: 1px solid #333; cursor: pointer; }
+  #playlist li.playing { background: #2e7d32; }
+  #playlist li:hover { background: #333; }
+  #controls { margin: 16px 0; display: flex; gap: 8px; align-items: center; }
+  button { background: #333; color: #eee; border: 1px solid #555; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+  button:hover { background: #444; }
+  audio { width: 100%; margin-top: 12px; }
+</style>
+</head>
+<body>
+<h1>MintMusic — local player</h1>
+<div id="drop">Drop music files/folder here or <button id="pick">Pick folder</button> <button id="files">Pick files</button>
+<input type="file" id="fileInput" accept="audio/*" multiple style="display:none">
+</div>
+<div id="controls">
+  <button id="prev">⏮ Prev</button>
+  <button id="next">Next ⏭</button>
+  <span id="now"></span>
+</div>
+<ul id="playlist"></ul>
+<audio id="player" controls></audio>
+<script src="renderer.js"></script>
+</body>
+</html>

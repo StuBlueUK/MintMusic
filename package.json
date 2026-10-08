@@ -1,0 +1,17 @@
+{
+  "name": "mintmusic",
+  "version": "0.1.0",
+  "description": "MintMusic - lightweight local music player for Linux Mint",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "",
+  "license": "GPL-3.0-or-later",
+  "devDependencies": {
+    "electron": "^33.0.0"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  }
+}
