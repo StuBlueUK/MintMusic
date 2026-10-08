@@ -4,7 +4,20 @@ Audio-first YouTube music player for Linux Mint. Dark-blue glassy desktop app (E
 
 ![MintMusic screenshot](assets/screenshot.png)
 
-## Install
+## Download
+
+Grab the latest `.deb` from
+[GitHub Releases](https://github.com/StuBlueUK/MintMusic/releases),
+then install it:
+
+```bash
+sudo dpkg -i mintmusic_*_amd64.deb
+sudo apt-get install -f   # only if dpkg reports missing dependencies
+```
+
+Or find **MintMusic** in the Mint menu afterwards.
+
+## Install (from source)
 
 ```bash
 npm install
