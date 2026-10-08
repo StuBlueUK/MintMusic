@@ -78,24 +78,38 @@ ipcMain.handle('open-url', async (_e, url) => {
 // Keyless YouTube search via Innertube (public WEB client key — no user API key needed).
 // Falls back to Piped public instances if Innertube is blocked.
 function collectVideos(node, out) {
-  if (!node || out.length >= 20) return;
+  if (!node || out.length >= 500) return;
   if (Array.isArray(node)) {
-    for (const v of node) { collectVideos(v, out); if (out.length >= 20) return; }
+    for (const v of node) { collectVideos(v, out); if (out.length >= 500) return; }
     return;
   }
   if (typeof node === 'object') {
-    if (node.videoRenderer && node.videoRenderer.videoId) {
-      const vr = node.videoRenderer;
+    const vr = node.videoRenderer || node.playlistVideoRenderer;
+    if (vr && vr.videoId) {
       const title = vr.title?.runs?.map(r => r.text).join('') || vr.title?.simpleText || 'Unknown';
-      const channel = vr.ownerText?.runs?.map(r => r.text).join('') || vr.ownerText?.simpleText || '';
+      const channel = vr.ownerText?.runs?.map(r => r.text).join('')
+        || vr.shortBylineText?.runs?.map(r => r.text).join('')
+        || vr.shortBylineText?.simpleText || '';
       const dur = vr.lengthText?.simpleText || '';
       const thumbs = vr.thumbnail?.thumbnails || [];
       const thumb = thumbs.length ? thumbs[thumbs.length - 1].url : '';
-      out.push({ videoId: vr.videoRenderer?.videoId || vr.videoId, title, channel, duration: dur, thumb });
+      out.push({ videoId: vr.videoId, title, channel, duration: dur, thumb });
       return;
     }
-    for (const k of Object.keys(node)) { collectVideos(node[k], out); if (out.length >= 20) return; }
+    for (const k of Object.keys(node)) { collectVideos(node[k], out); if (out.length >= 500) return; }
   }
+}
+function findContinuation(node) {
+  if (!node) return null;
+  if (Array.isArray(node)) {
+    for (const v of node) { const t = findContinuation(v); if (t) return t; }
+    return null;
+  }
+  if (typeof node === 'object') {
+    if (node.continuationCommand && node.continuationCommand.token) return node.continuationCommand.token;
+    for (const k of Object.keys(node)) { const t = findContinuation(node[k]); if (t) return t; }
+  }
+  return null;
 }
 
 ipcMain.handle('yt-search', async (_e, query) => {
@@ -135,4 +149,28 @@ ipcMain.handle('yt-search', async (_e, query) => {
     } catch {}
   }
   throw new Error('Keyless search failed (network blocked?). Add a Data API key in Settings as backup.');
+});
+
+// Keyless playlist import via Innertube browse (no API key). Follows continuations.
+ipcMain.handle('yt-playlist', async (_e, playlistId) => {
+  const id = String(playlistId || '').slice(0, 60);
+  if (!id) return [];
+  const out = [];
+  let continuation = null;
+  for (let page = 0; page < 10; page++) {
+    const body = continuation
+      ? { context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, continuation }
+      : { context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, browseId: 'VL' + id };
+    const r = await fetch('https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error('YouTube answered ' + r.status);
+    const j = await r.json();
+    const before = out.length;
+    collectVideos(j, out);
+    if (out.length === before && page === 0) throw new Error('Playlist not found, private, or empty.');
+    continuation = findContinuation(j);
+    if (!continuation || out.length >= 500) break;
+  }
+  return out;
 });

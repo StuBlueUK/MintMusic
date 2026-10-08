@@ -539,7 +539,25 @@ document.getElementById('ytPlImport').onclick = async () => {
   const key = getKey();
   const m = url.match(/[?&]list=([^&]+)/);
   if (!m) { alert('Paste a full YouTube playlist URL (with ?list=…).'); return; }
-  if (!key) { alert('Add API key in Settings first.'); return; }
+  resultsEl.innerHTML = '<div class="hint">Importing playlist… (no key needed)</div>';
+  // 1) Keyless via main (Innertube browse + continuations)
+  try {
+    if (window.mintmusic && window.mintmusic.importPlaylist) {
+      const items = await window.mintmusic.importPlaylist(m[1]);
+      if (items && items.length) {
+        items.forEach(v => tracks.push({ kind: 'yt', name: v.title, videoId: v.videoId, channel: v.channel }));
+        render();
+        resultsEl.innerHTML = `<div class="hint">Imported ${items.length} tracks to queue. ▶ to play.</div>`;
+        play(tracks.length - items.length);
+        return;
+      }
+    }
+  } catch (e) {
+    console.warn('keyless playlist import failed', e);
+    if (!key) { resultsEl.innerHTML = `<div class="hint">Import failed: ${escapeHtml(e.message)}</div>`; return; }
+  }
+  // 2) Official Data API fallback (needs key)
+  if (!key) { resultsEl.innerHTML = '<div class="hint">Keyless import returned nothing. Add a Data API key in Settings as backup.</div>'; return; }
   try {
     let page = '', added = 0;
     for (let p = 0; p < 5; p++) {
@@ -569,6 +587,35 @@ document.addEventListener('keydown', e => {
     else if (ytPlayer && ytPlayer.seekTo) ytPlayer.seekTo(Math.max(0, (ytPlayer.getCurrentTime() || 0) - 10), true);
   }
 });
+
+// ---- random mix: random genres -> keyless search -> shuffled queue ----
+const MIX_GENRES = ['synthwave', 'lofi hip hop', 'jazz bossa nova', 'classical piano', 'indie folk',
+  'ambient chill', 'funk soul', 'reggae dub', 'acoustic rock', 'electro swing', 'trip hop',
+  'progressive house', 'motown', 'bluegrass', 'k-pop', 'afrobeats', 'shoegaze', 'drum and bass'];
+document.getElementById('randomMix').onclick = async () => {
+  if (!window.mintmusic || !window.mintmusic.searchYouTube) { alert('Player not ready yet.'); return; }
+  const picks = [...MIX_GENRES].sort(() => Math.random() - 0.5).slice(0, 3);
+  resultsEl.innerHTML = `<div class="hint">🎲 Rolling a mix from: ${escapeHtml(picks.join(' • '))}…</div>`;
+  try {
+    const all = [];
+    for (const g of picks) {
+      const items = await window.mintmusic.searchYouTube(g + ' music');
+      (items || []).slice(0, 5).forEach(v => all.push({ kind: 'yt', name: v.title, videoId: v.videoId, channel: v.channel }));
+    }
+    if (!all.length) { resultsEl.innerHTML = '<div class="hint">Random mix came up empty — try again.</div>'; return; }
+    for (let i = all.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [all[i], all[j]] = [all[j], all[i]];
+    }
+    const at = tracks.length;
+    all.forEach(t => tracks.push(t));
+    render();
+    resultsEl.innerHTML = `<div class="hint">🎲 Random mix: ${all.length} tracks from ${escapeHtml(picks.join(', '))} — playing now.</div>`;
+    play(at);
+  } catch (e) {
+    resultsEl.innerHTML = `<div class="hint">Random mix failed: ${escapeHtml(e.message)}</div>`;
+  }
+};
 
 render();
 renderPls();
