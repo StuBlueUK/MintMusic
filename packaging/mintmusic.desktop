@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=MintMusic
+Comment=Audio-only YouTube music player
+Exec=mintmusic
+Icon=mintmusic
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;Player;

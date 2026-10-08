@@ -25,12 +25,12 @@ body {
 .orb2 { width: 380px; height: 380px; background: #0369a1; bottom: -140px; right: -80px; }
 
 .app { position: relative; z-index: 1; max-width: 960px; margin: 0 auto; padding: 24px; }
-.topbar { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; }
+.topbar { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
 .logo { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 22px;
   background: linear-gradient(135deg, #3b82f6, #0ea5e9); box-shadow: 0 4px 24px rgba(59,130,246,.5); }
 .title h1 { margin: 0; font-size: 20px; letter-spacing: .3px; }
 .title small { color: var(--muted); }
-.search { margin-left: auto; display: flex; gap: 8px; flex: 1; max-width: 420px; justify-content: flex-end; }
+.search { margin-left: auto; display: flex; gap: 8px; flex: 1; max-width: 520px; justify-content: flex-end; }
 .search input {
   width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--glass-border);
   background: var(--glass); color: var(--text); outline: none; backdrop-filter: blur(16px);
@@ -61,7 +61,7 @@ body {
 .progress { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
 .progress span { font-size: 12px; color: var(--muted); min-width: 40px; }
 #seek { flex: 1; accent-color: var(--accent); }
-.controls { display: flex; gap: 10px; margin-top: 12px; align-items: center; }
+.controls { display: flex; gap: 10px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
 .btn {
   border: 1px solid var(--glass-border); background: rgba(96,165,250,.15); color: var(--text);
   border-radius: 12px; padding: 9px 14px; cursor: pointer; font-size: 14px; backdrop-filter: blur(10px);
@@ -72,7 +72,10 @@ body {
 .vol { display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--muted); }
 .vol input { accent-color: var(--accent); width: 90px; }
 
-.panel { margin-top: 16px; padding: 16px 16px 8px; }
+.tabs { display: flex; gap: 8px; margin-top: 16px; }
+.tab.active { background: rgba(37,99,235,.4); }
+.hidden { display: none; }
+.panel { margin-top: 12px; padding: 16px 16px 8px; }
 .panel h3 { margin: 4px 4px 12px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
 .drop {
   border: 1.5px dashed var(--glass-border); border-radius: 14px; padding: 18px; text-align: center;
@@ -80,12 +83,28 @@ body {
 }
 .drop .row { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
 #playlist { list-style: none; padding: 0; margin: 0; max-height: 300px; overflow-y: auto; }
-#playlist li {
+#playlist li, .res-item, .pl-item {
   padding: 10px 12px; border-radius: 12px; cursor: pointer; display: flex; gap: 10px; align-items: center;
   border: 1px solid transparent;
 }
-#playlist li:hover { background: rgba(96,165,250,.12); }
+#playlist li:hover, .res-item:hover { background: rgba(96,165,250,.12); }
 #playlist li.playing { background: rgba(37,99,235,.3); border-color: var(--glass-border); }
 #playlist li .n { color: var(--muted); font-size: 12px; min-width: 24px; }
-#player { display: none; } /* custom controls only — audio, no video */
+.res-item img { width: 96px; height: 54px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+.res-item .meta { flex: 1; min-width: 0; }
+.res-item .meta b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.res-item .meta span { font-size: 12px; color: var(--muted); }
+.res-item .acts { display: flex; gap: 6px; }
+.rowflex { display: flex; gap: 8px; margin: 8px 0; }
+.rowflex input, .setlabel input {
+  flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--glass-border);
+  background: rgba(10,25,49,.5); color: var(--text);
+}
+.setlabel { display: block; font-size: 13px; color: var(--muted); margin: 8px 0; }
+.setlabel input { display: block; width: 100%; margin-top: 6px; }
+#player { display: none; }
+#ytWrap { position: fixed; width: 2px; height: 2px; left: -10px; bottom: -10px; opacity: 0.01; pointer-events: none; }
 .hint { color: var(--muted); font-size: 12px; text-align: center; padding: 10px; }
+.pl-head { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px; background: rgba(37,99,235,.15); border-radius: 10px; }
+.pl-head b { flex: 1; }
+.pl-tracks { margin-left: 12px; font-size: 13px; color: var(--muted); }

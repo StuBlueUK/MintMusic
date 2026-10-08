@@ -1,17 +1,35 @@
 {
   "name": "mintmusic",
   "version": "0.1.0",
-  "description": "MintMusic - lightweight local music player for Linux Mint",
+  "description": "MintMusic - audio-only YouTube music player for Linux Mint",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --linux deb"
   },
   "author": "",
   "license": "GPL-3.0-or-later",
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
   },
   "allowScripts": {
     "electron@33.4.11": true
+  },
+  "build": {
+    "appId": "uk.co.stubblue.mintmusic",
+    "productName": "MintMusic",
+    "files": [
+      "*.js",
+      "*.html",
+      "*.css",
+      "assets/**/*"
+    ],
+    "linux": {
+      "target": ["deb"],
+      "category": "AudioVideo",
+      "maintainer": "MintMusic",
+      "description": "Audio-only YouTube music player for Linux Mint"
+    }
   }
 }

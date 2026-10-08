@@ -13,7 +13,8 @@
     <div class="logo">🎵</div>
     <div class="title"><h1>MintMusic</h1><small>audio only • no video</small></div>
     <div class="search">
-      <input id="search" type="search" placeholder="Search YouTube music… (coming soon)  •  / to focus">
+      <input id="search" type="search" placeholder="Search YouTube music…  •  / to focus">
+      <button class="btn primary" id="searchBtn">Search</button>
     </div>
   </div>
 
@@ -21,7 +22,7 @@
     <div class="disc" id="disc"></div>
     <div class="track-info">
       <h2 id="nowTitle">Nothing playing</h2>
-      <p id="nowSub">Drop audio files below to start</p>
+      <p id="nowSub">Search above, or drop audio files below</p>
       <div class="progress">
         <span id="tCur">0:00</span>
         <input id="seek" type="range" min="0" max="1000" value="0">
@@ -37,7 +38,19 @@
     </div>
   </div>
 
-  <div class="glass panel">
+  <div class="tabs">
+    <button class="btn tab active" data-tab="results">Search</button>
+    <button class="btn tab" data-tab="queue">Queue</button>
+    <button class="btn tab" data-tab="playlists">Playlists</button>
+    <button class="btn tab" data-tab="settings">Settings</button>
+  </div>
+
+  <div class="glass panel" id="tab-results">
+    <h3>YouTube results (audio only)</h3>
+    <div id="results"><div class="hint">Search for music above. Needs a free YouTube Data API key (Settings tab).</div></div>
+  </div>
+
+  <div class="glass panel hidden" id="tab-queue">
     <h3>Queue</h3>
     <div class="drop" id="drop">
       Drag &amp; drop audio files here
@@ -48,10 +61,33 @@
       <input type="file" id="fileInput" accept="audio/*,.mp3,.ogg,.wav,.flac,.m4a" multiple hidden>
     </div>
     <ul id="playlist"></ul>
-    <div class="hint">Audio-only player — no video window. YouTube search + playlists land here next.</div>
+    <div class="hint">Local files + YouTube tracks share one queue. Audio only — no video window.</div>
+  </div>
+
+  <div class="glass panel hidden" id="tab-playlists">
+    <h3>Playlists</h3>
+    <div class="rowflex">
+      <input id="plName" placeholder="New playlist name…">
+      <button class="btn" id="plCreate">Create</button>
+    </div>
+    <div id="plList"></div>
+  </div>
+
+  <div class="glass panel hidden" id="tab-settings">
+    <h3>Settings</h3>
+    <label class="setlabel">YouTube Data API v3 key (free, Google Cloud Console → enable YouTube Data API v3):
+      <input id="apiKey" placeholder="AIza…" autocomplete="off">
+    </label>
+    <div class="rowflex">
+      <button class="btn primary" id="saveKey">Save key</button>
+      <button class="btn" id="clearKey">Clear</button>
+    </div>
+    <div class="hint">Key is stored locally (localStorage v0.2, moves to OS keyring later). Search costs ~100 quota units; free tier = ~100 searches/day. Without a key, search is disabled.</div>
   </div>
 </div>
+<div id="ytWrap"><div id="ytplayer"></div></div>
 <audio id="player"></audio>
+<script src="https://www.youtube.com/iframe_api"></script>
 <script src="renderer.js"></script>
 </body>
 </html>
