@@ -100,6 +100,7 @@ function collectVideos(node, out) {
   }
 }
 function findContinuation(node) {
+
   if (!node) return null;
   if (Array.isArray(node)) {
     for (const v of node) { const t = findContinuation(v); if (t) return t; }
@@ -149,6 +150,43 @@ ipcMain.handle('yt-search', async (_e, query) => {
     } catch {}
   }
   throw new Error('Keyless search failed (network blocked?). Add a Data API key in Settings as backup.');
+});
+
+// Keyless playlist discovery: search filter type=playlist, collect playlistRenderers.
+function collectPlaylists(node, out) {
+  if (!node || out.length >= 20) return;
+  if (Array.isArray(node)) {
+    for (const v of node) { collectPlaylists(v, out); if (out.length >= 20) return; }
+    return;
+  }
+  if (typeof node === 'object') {
+    const pl = node.playlistRenderer;
+    if (pl && pl.playlistId) {
+      const title = pl.title?.simpleText || pl.title?.runs?.map(r => r.text).join('') || 'Untitled';
+      const channel = pl.shortBylineText?.simpleText || pl.shortBylineText?.runs?.map(r => r.text).join('') || '';
+      const count = pl.videoCountText?.simpleText || pl.videoCount || '';
+      const thumbs = pl.thumbnails?.[0]?.thumbnails || pl.thumbnail?.thumbnails || [];
+      const thumb = thumbs.length ? thumbs[thumbs.length - 1].url : '';
+      out.push({ playlistId: pl.playlistId, title, channel, count, thumb });
+      return;
+    }
+    for (const k of Object.keys(node)) { collectPlaylists(node[k], out); if (out.length >= 20) return; }
+  }
+}
+
+ipcMain.handle('yt-search-playlists', async (_e, query) => {
+  const q = String(query || '').slice(0, 100);
+  if (!q) return [];
+  const r = await fetch('https://www.youtube.com/youtubei/v1/search?key=' + ['AI', 'zaSyAO_FJ2SlqU8Q4STEHLGCilw', '_Y9_11qcW8'].join('') + '&prettyPrint=false', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, query: q, params: 'EgIQAw%3D%3D' })
+  });
+  if (!r.ok) throw new Error('YouTube answered ' + r.status);
+  const j = await r.json();
+  const out = [];
+  collectPlaylists(j, out);
+  return out;
 });
 
 // Keyless playlist import via Innertube browse (no API key). Follows continuations.

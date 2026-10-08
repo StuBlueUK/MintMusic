@@ -16,6 +16,10 @@ let idx = 0;
 let ytPlayer = null;
 let ytReady = false;
 let currentKind = 'file';
+let lastResults = []; // last search results — radio fallback when queue runs out
+let radioPos = 0;
+let playToken = 0; // bumped on every play(); stale error-skip timers check it
+let errStreak = 0; // consecutive broken tracks; stop after 3 to avoid skip-loops
 
 const fmt = s => {
   if (!isFinite(s)) return '0:00';
@@ -68,6 +72,7 @@ function stopFile() { player.pause(); }
 
 function play(i) {
   if (!tracks.length) return;
+  playToken++;
   idx = (i + tracks.length) % tracks.length;
   const t = tracks[idx];
   pushHistory(t);
@@ -132,13 +137,29 @@ document.getElementById('shuffleBtn').onclick = () => {
 };
 
 // file audio events
-player.onplay = () => currentKind === 'file' && setPlayingUI(true);
+player.onplay = () => { if (currentKind !== 'file') return; errStreak = 0; setPlayingUI(true); };
 player.onpause = () => currentKind === 'file' && setPlayingUI(false);
 player.onended = () => handleEnded();
 function handleEnded() {
   if (repeatMode === 'one') return play(idx);
-  if (idx === tracks.length - 1 && repeatMode === 'off') { setPlayingUI(false); return; }
-  play(idx + 1);
+  if (idx < tracks.length - 1 || repeatMode === 'all') return play(idx + 1);
+  // Natural end of queue with repeat off → radio fallback: continue from search results
+  radioNext();
+}
+// If the queue is empty/ended, keep music going from the last search results.
+function radioNext() {
+  const pool = lastResults.filter(r => r.videoId && !tracks.some(t => t.videoId === r.videoId));
+  const cand = pool.length ? pool : lastResults.filter(r => r.videoId);
+  if (!cand.length) {
+    setPlayingUI(false);
+    nowSub.textContent = 'Queue ended — search something to keep playing.';
+    return false;
+  }
+  const v = cand[radioPos % cand.length]; radioPos++;
+  tracks.push({ kind: 'yt', name: v.title, videoId: v.videoId, channel: v.channel });
+  render();
+  play(tracks.length - 1);
+  return true;
 }
 player.ontimeupdate = () => {
   if (currentKind !== 'file') return;
@@ -203,13 +224,30 @@ window.onYouTubeIframeAPIReady = () => {
           else if (code === 101 || code === 150) msg = 'This video blocks embedding (label restriction).';
           else if (code === 100) msg = 'Video not found/private.';
           else msg = 'YouTube error ' + code + '.';
-          nowSub.textContent = msg + ' Use ↗ YouTube.';
+          errStreak++;
+          if (errStreak >= 3) {
+            errStreak = 0;
+            nowSub.textContent = 'Stopped: 3 broken tracks in a row. Use ↗ YouTube or pick another.';
+            setPlayingUI(false);
+            document.getElementById('openYT').classList.remove('hidden');
+            return;
+          }
+          nowSub.textContent = msg + ' Skipping…';
           setPlayingUI(false);
           document.getElementById('openYT').classList.remove('hidden');
+          // Auto-skip broken tracks so the queue keeps flowing (never replays on repeat-one).
+          const token = playToken;
+          setTimeout(() => {
+            if (token !== playToken) return; // user already moved on
+            if (idx < tracks.length - 1) play(idx + 1);
+            else if (repeatMode === 'all') play(0);
+            else radioNext();
+          }, 2500);
         },
         onStateChange: e => {
           if (currentKind !== 'yt') return;
           if (e.data === YT.PlayerState.PLAYING) {
+            errStreak = 0;
             setPlayingUI(true);
             nowTitle.textContent = tracks[idx] ? tracks[idx].name : 'Playing';
             nowSub.textContent = ((tracks[idx] && tracks[idx].channel) || 'YouTube') + ' • audio only';
@@ -293,6 +331,7 @@ document.getElementById('clearKey').onclick = () => {
 };
 
 function renderResults(items) {
+  lastResults = items || [];
   resultsEl.innerHTML = '';
   if (!items.length) { resultsEl.innerHTML = '<div class="hint">No results.</div>'; return; }
   items.forEach(v => {
@@ -614,6 +653,28 @@ document.getElementById('randomMix').onclick = async () => {
     play(at);
   } catch (e) {
     resultsEl.innerHTML = `<div class="hint">Random mix failed: ${escapeHtml(e.message)}</div>`;
+  }
+};
+
+// ---- random playlist of the selected genre: find playlists -> import one ----
+document.getElementById('randomPlaylist').onclick = async () => {
+  if (!window.mintmusic || !window.mintmusic.searchPlaylists) { alert('Player not ready yet.'); return; }
+  const genre = document.getElementById('genre').value;
+  resultsEl.innerHTML = `<div class="hint">🎲 Hunting ${escapeHtml(genre)} playlists…</div>`;
+  try {
+    const pls = await window.mintmusic.searchPlaylists(genre + ' playlist');
+    if (!pls || !pls.length) { resultsEl.innerHTML = `<div class="hint">No ${escapeHtml(genre)} playlists found — try another genre.</div>`; return; }
+    const pick = pls[Math.floor(Math.random() * pls.length)];
+    resultsEl.innerHTML = `<div class="hint">🎲 Importing “${escapeHtml(pick.title)}” (${escapeHtml(pick.channel || '')}${pick.count ? ' • ' + escapeHtml(String(pick.count)) : ''})…</div>`;
+    const items = await window.mintmusic.importPlaylist(pick.playlistId);
+    if (!items || !items.length) { resultsEl.innerHTML = '<div class="hint">That playlist came up empty — hit 🎲 again.</div>'; return; }
+    const at = tracks.length;
+    items.forEach(v => tracks.push({ kind: 'yt', name: v.title, videoId: v.videoId, channel: v.channel }));
+    render();
+    resultsEl.innerHTML = `<div class="hint">🎲 Imported ${items.length} tracks from “${escapeHtml(pick.title)}” — playing now.</div>`;
+    play(at);
+  } catch (e) {
+    resultsEl.innerHTML = `<div class="hint">Random playlist failed: ${escapeHtml(e.message)}</div>`;
   }
 };
 
