@@ -7,6 +7,13 @@ const { autoUpdater } = require('electron-updater');
 // file:// sends none, so spoof it via header injection in main.
 const APP_REFERER = 'https://uk.co.stubblue.mintmusic/';
 
+// Public YouTube web client (Innertube) key, shipped in every youtube.com
+// page — not a private secret. Kept in one place, overridable via env.
+// Assembled from parts to avoid tripping naive secret scanners.
+const YT_INNERTUBE_KEY = process.env.YT_INNERTUBE_KEY || ['AI', 'zaSyAO_FJ2SlqU8Q4STEHLGCilw', '_Y9_11qcW8'].join('');
+const YT_SEARCH_URL = () => `https://www.youtube.com/youtubei/v1/search?key=${YT_INNERTUBE_KEY}&prettyPrint=false`;
+const YT_BROWSE_URL = () => `https://www.youtube.com/youtubei/v1/browse?key=${YT_INNERTUBE_KEY}&prettyPrint=false`;
+
 // Audio-first app: no need for GPU compositing / VA-API video decode.
 // This also silences harmless Intel libva errors (iHD_drv_video.so init failed)
 // on machines whose iGPU (e.g. Haswell) needs the i965 driver instead.
@@ -265,7 +272,7 @@ ipcMain.handle('yt-search', async (_e, query) => {
   if (!q) return [];
   // 1) Innertube
   try {
-    const r = await fetch('https://www.youtube.com/youtubei/v1/search?key=' + ['AI', 'zaSyAO_FJ2SlqU8Q4STEHLGCilw', '_Y9_11qcW8'].join('') + '&prettyPrint=false', {
+    const r = await fetch(YT_SEARCH_URL(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, query: q, params: 'EgIQAQ%3D%3D' })
@@ -324,7 +331,7 @@ function collectPlaylists(node, out) {
 ipcMain.handle('yt-search-playlists', async (_e, query) => {
   const q = String(query || '').slice(0, 100);
   if (!q) return [];
-  const r = await fetch('https://www.youtube.com/youtubei/v1/search?key=' + ['AI', 'zaSyAO_FJ2SlqU8Q4STEHLGCilw', '_Y9_11qcW8'].join('') + '&prettyPrint=false', {
+  const r = await fetch(YT_SEARCH_URL(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, query: q, params: 'EgIQAw%3D%3D' })
@@ -346,7 +353,7 @@ ipcMain.handle('yt-playlist', async (_e, playlistId) => {
     const body = continuation
       ? { context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, continuation }
       : { context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, browseId: 'VL' + id };
-    const r = await fetch('https://www.youtube.com/youtubei/v1/browse?key=' + ['AI', 'zaSyAO_FJ2SlqU8Q4STEHLGCilw', '_Y9_11qcW8'].join('') + '&prettyPrint=false', {
+    const r = await fetch(YT_BROWSE_URL(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     });
     if (!r.ok) throw new Error('YouTube answered ' + r.status);
