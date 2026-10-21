@@ -41,6 +41,13 @@ document.querySelectorAll('.tab').forEach(b => {
 let checkedSet = new Set();
 function render() {
   list.innerHTML = '';
+  if (!tracks.length) {
+    const empty = document.createElement('li');
+    empty.className = 'empty';
+    empty.textContent = 'Queue is empty — search above or drop audio files.';
+    list.appendChild(empty);
+    return;
+  }
   const cur = tracks[idx];
   tracks.forEach((t, i) => {
     const li = document.createElement('li');
@@ -66,15 +73,7 @@ function render() {
     x.className = 'btn mini';
     x.textContent = '✕';
     x.title = 'Remove';
-    x.onclick = e => {
-      e.stopPropagation();
-      const c = tracks[idx];
-      tracks.splice(i, 1);
-      checkedSet = new Set([...checkedSet].filter(n => n !== i).map(n => n > i ? n - 1 : n));
-      idx = Math.max(0, tracks.indexOf(c));
-      if (!tracks.length) idx = 0;
-      render();
-    };
+    x.onclick = e => { e.stopPropagation(); removeQueueIndices(new Set([i])); };
     li.append(cb, num, label, x);
     li.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', String(i)); li.classList.add('dragging'); });
     li.addEventListener('dragend', () => li.classList.remove('dragging'));
@@ -95,13 +94,36 @@ function render() {
 }
 document.getElementById('qRemoveSel').onclick = () => {
   if (!checkedSet.size) return;
-  const c = tracks[idx];
-  tracks = tracks.filter((_, i) => !checkedSet.has(i));
-  checkedSet = new Set();
-  idx = Math.max(0, tracks.indexOf(c));
-  if (!tracks.length) idx = 0;
-  render();
+  removeQueueIndices(new Set(checkedSet));
 };
+function removeQueueIndices(indices) {
+  if (!indices.size) return;
+  const current = tracks[idx];
+  const currentRemoved = indices.has(idx);
+  const oldIndex = idx;
+  tracks = tracks.filter((_, i) => !indices.has(i));
+  checkedSet = new Set();
+  if (!tracks.length) {
+    idx = 0;
+    stopYT();
+    stopFile();
+    player.removeAttribute('src');
+    player.load();
+    currentKind = 'file';
+    nowTitle.textContent = 'Nothing playing';
+    nowSub.textContent = 'Search above, or drop audio files in the queue';
+    document.getElementById('openYT').classList.add('hidden');
+    setPlayingUI(false);
+    render();
+    return;
+  }
+  if (currentRemoved) {
+    play(Math.min(oldIndex, tracks.length - 1));
+    return;
+  }
+  idx = Math.max(0, tracks.indexOf(current));
+  render();
+}
 const escapeHtml = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function setPlayingUI(isPlaying) {
@@ -147,7 +169,7 @@ function play(i) {
   pushHistory(t);
   notifyTrack(t);
   document.getElementById('openYT').classList.toggle('hidden', t.kind !== 'yt');
-  const videoTab = document.querySelector('[data-tab="video"]');
+  const videoTab = document.querySelector('[data-tab="video"] .tab-label');
   if (videoTab) videoTab.textContent = t.kind === 'yt' ? 'Video ●' : 'Video';
   if (t.kind === 'yt') {
     stopFile();
@@ -158,7 +180,9 @@ function play(i) {
       try {
         ytPlayer.loadVideoById(t.videoId);
         // Click = user gesture, so unmute + play with sound (autoplay policy)
+        const token = playToken;
         setTimeout(() => {
+          if (token !== playToken) return;
           try {
             if (ytPlayer.unMute) ytPlayer.unMute();
             ytPlayer.setVolume(Number(vol.value));
@@ -389,15 +413,44 @@ function tickYT() {
   if (ytPlayer.getPlayerState && ytPlayer.getPlayerState() === 1) setTimeout(tickYT, 500);
 }
 
-// ---- YouTube search (Data API v3) ----
-const getKey = () => localStorage.getItem('mm_yt_key') || '';
-document.getElementById('apiKey').value = getKey();
-document.getElementById('saveKey').onclick = () => {
-  localStorage.setItem('mm_yt_key', document.getElementById('apiKey').value.trim());
-  alert('API key saved locally.');
+// ---- optional YouTube Data API fallback (key is held by the main process) ----
+const apiKeyInput = document.getElementById('apiKey');
+const apiKeyStatus = document.getElementById('apiKeyStatus');
+async function refreshApiKeyStatus() {
+  try {
+    const status = await window.mintmusic.apiKeyStatus();
+    apiKeyInput.value = '';
+    apiKeyInput.placeholder = status.saved ? 'Saved securely — enter a new key to replace' : 'Optional — leave empty';
+    apiKeyStatus.textContent = !status.available
+      ? 'Secure key storage is unavailable. Enable GNOME Keyring or KDE Wallet to save an API key.'
+      : status.saved ? 'A key is saved securely on this device.' : 'No backup key saved.';
+  } catch {
+    apiKeyStatus.textContent = 'Secure key storage is unavailable.';
+  }
+}
+(async () => {
+  const legacyKey = localStorage.getItem('mm_yt_key');
+  if (legacyKey) {
+    try {
+      if (await window.mintmusic.apiKeySet(legacyKey)) localStorage.removeItem('mm_yt_key');
+    } catch {}
+  }
+  refreshApiKeyStatus();
+})();
+document.getElementById('saveKey').onclick = async () => {
+  const key = apiKeyInput.value.trim();
+  if (!key) { apiKeyStatus.textContent = 'Enter a key before saving.'; return; }
+  try {
+    if (!await window.mintmusic.apiKeySet(key)) throw new Error('Secure storage is unavailable.');
+    apiKeyInput.value = '';
+    await refreshApiKeyStatus();
+  } catch (e) { apiKeyStatus.textContent = 'Could not save key: ' + e.message; }
 };
-document.getElementById('clearKey').onclick = () => {
-  localStorage.removeItem('mm_yt_key'); document.getElementById('apiKey').value = '';
+document.getElementById('clearKey').onclick = async () => {
+  try {
+    if (!await window.mintmusic.apiKeyClear()) throw new Error('Secure storage is unavailable.');
+    await refreshApiKeyStatus();
+  } catch (e) { apiKeyStatus.textContent = 'Could not clear key: ' + e.message; }
 };
 
 // ---- tray prefs (minimize / close to taskbar tray) ----
@@ -431,11 +484,27 @@ document.getElementById('miniBtn').onclick = async () => {
 document.getElementById('updCheck').onclick = async () => {
   const el = document.getElementById('updStatus');
   el.textContent = 'Checking…';
-  try { el.textContent = await window.mintmusic.checkUpdates(); }
+  try {
+    el.textContent = await window.mintmusic.checkUpdates();
+    document.getElementById('updInstall').classList.toggle('hidden', !el.textContent.includes('restart to install'));
+  }
   catch (e) { el.textContent = 'Check failed: ' + e.message; }
 };
+document.getElementById('updInstall').onclick = async () => {
+  try {
+    if (!await window.mintmusic.installUpdate()) document.getElementById('updStatus').textContent = 'No downloaded update is ready.';
+  } catch (e) { document.getElementById('updStatus').textContent = 'Install failed: ' + e.message; }
+};
 if (window.mintmusic && window.mintmusic.onUpdateStatus) {
-  window.mintmusic.onUpdateStatus(msg => { document.getElementById('updStatus').textContent = msg; });
+  window.mintmusic.onUpdateStatus(msg => {
+    document.getElementById('updStatus').textContent = msg;
+    document.getElementById('updInstall').classList.toggle('hidden', !msg.includes('restart to install'));
+  });
+  window.mintmusic.updateStatusGet().then(msg => {
+    if (!msg) return;
+    document.getElementById('updStatus').textContent = msg;
+    document.getElementById('updInstall').classList.toggle('hidden', !msg.includes('restart to install'));
+  }).catch(() => {});
 }
 
 function renderResults(items) {
@@ -446,7 +515,26 @@ function renderResults(items) {
     const id = v.videoId;
     const div = document.createElement('div');
     div.className = 'res-item';
-    div.innerHTML = `${v.thumb ? `<img src="${v.thumb}">` : ''}<div class="meta"><b>${escapeHtml(v.title)}</b><span>${escapeHtml(v.channel || '')}${v.duration ? ' • ' + escapeHtml(v.duration) : ''}</span></div>`;
+    if (v.thumb) {
+      try {
+        const thumb = new URL(String(v.thumb));
+        if (thumb.protocol === 'https:') {
+          const img = document.createElement('img');
+          img.src = thumb.href;
+          img.alt = '';
+          img.loading = 'lazy';
+          div.appendChild(img);
+        }
+      } catch {}
+    }
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const title = document.createElement('b');
+    title.textContent = String(v.title || 'Unknown');
+    const detail = document.createElement('span');
+    detail.textContent = `${v.channel || ''}${v.duration ? ' • ' + v.duration : ''}`;
+    meta.append(title, detail);
+    div.appendChild(meta);
     const acts = document.createElement('div');
     acts.className = 'acts';
     const bPlay = document.createElement('button'); bPlay.className = 'btn primary'; bPlay.textContent = '▶';
@@ -466,7 +554,6 @@ function renderResults(items) {
 async function doSearch() {
   const q = document.getElementById('search').value.trim();
   if (!q) return;
-  const key = getKey();
   resultsEl.innerHTML = '<div class="hint">Searching… (no key needed)</div>';
   // 1) Keyless via main (Innertube + Piped fallback) — default, no key required
   try {
@@ -474,19 +561,21 @@ async function doSearch() {
       const items = await window.mintmusic.searchYouTube(q);
       if (items && items.length) { renderResults(items); return; }
     }
-  } catch (e) {
-    // fall through to Data API key if available
-    if (!key) { resultsEl.innerHTML = `<div class="hint">Keyless search failed: ${escapeHtml(e.message)}</div>`; return; }
+  } catch (keylessError) {
+    try {
+      const items = await window.mintmusic.searchYouTubeData(q);
+      if (items && items.length) { renderResults(items); return; }
+      renderResults([]);
+    }
+    catch (err) {
+      resultsEl.innerHTML = `<div class="hint">Search failed: ${escapeHtml(err.message || keylessError.message)}</div>`;
+    }
+    return;
   }
-  // 2) Official Data API (only if user added a key — higher reliability)
-  if (!key) { resultsEl.innerHTML = '<div class="hint">Keyless search returned nothing. Add a Data API key in Settings as backup.</div>'; return; }
   try {
-    const s = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=15&q=${encodeURIComponent(q)}&key=${key}`).then(r => r.json());
-    if (s.error) throw new Error(s.error.message);
-    const ids = s.items.map(i => i.id.videoId).join(',');
-    const d = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails,snippet&id=${ids}&key=${key}`).then(r => r.json());
-    const dur = {}; (d.items || []).forEach(v => dur[v.id] = v.contentDetails.duration);
-    renderResults(s.items.map(v => ({ videoId: v.id.videoId, title: v.snippet.title, channel: v.snippet.channelTitle, duration: dur[v.id.videoId] || '', thumb: v.snippet.thumbnails?.medium?.url || '' })));
+    const items = await window.mintmusic.searchYouTubeData(q);
+    if (items && items.length) { renderResults(items); return; }
+    renderResults([]);
   } catch (err) {
     resultsEl.innerHTML = `<div class="hint">Search failed: ${escapeHtml(err.message)}</div>`;
   }
@@ -498,7 +587,11 @@ document.getElementById('search').addEventListener('keydown', e => { if (e.key =
 function addFiles(fileList) {
   const added = [...fileList].filter(f => f.type.startsWith('audio') || /\.(mp3|ogg|wav|flac|m4a)$/i.test(f.name));
   const firstNew = tracks.length;
-  added.forEach(f => tracks.push({ kind: 'file', name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f) }));
+  added.forEach(f => {
+    let filePath = '';
+    try { filePath = window.mintmusic.getFilePath(f); } catch {}
+    tracks.push({ kind: 'file', name: f.name.replace(/\.[^.]+$/, ''), path: filePath, url: URL.createObjectURL(f) });
+  });
   render();
   if (added.length && (firstNew === 0 || !player.src)) play(firstNew);
 }
@@ -686,7 +779,12 @@ if (window.mintmusic && window.mintmusic.onMediaKey) {
 // ---- repeat / history / notifications / import / export ----
 let repeatMode = localStorage.getItem('mm_repeat') || 'off';
 const repeatBtn = document.getElementById('repeatBtn');
-function paintRepeat() { repeatBtn.textContent = 'Repeat: ' + repeatMode; }
+function paintRepeat() {
+  const labels = { off: '↻ Off', all: '↻ All', one: '↻ One' };
+  repeatBtn.textContent = labels[repeatMode] || labels.off;
+  repeatBtn.title = 'Repeat: ' + repeatMode;
+  repeatBtn.classList.toggle('active', repeatMode !== 'off');
+}
 repeatBtn.onclick = () => {
   repeatMode = repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off';
   localStorage.setItem('mm_repeat', repeatMode);
@@ -731,21 +829,14 @@ document.getElementById('qClear').onclick = () => {
   nowTitle.textContent = 'Nothing playing';
   render(); setPlayingUI(false);
 };
-document.getElementById('qExport').onclick = () => {
-  const lines = ['#EXTM3U'];
-  tracks.forEach(t => {
-    lines.push(`#EXTINF:-1,${t.name}`);
-    lines.push(t.kind === 'yt' ? `https://www.youtube.com/watch?v=${t.videoId}` : t.name);
-  });
-  const blob = new Blob([lines.join('\n')], { type: 'audio/x-mpegurl' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'mintmusic.m3u';
-  a.click();
+document.getElementById('qExport').onclick = async () => {
+  try {
+    const result = await window.mintmusic.exportQueue(tracks);
+    if (!result.canceled) nowSub.textContent = `Queue exported to ${result.filePath}`;
+  } catch (e) { alert('Queue export failed: ' + e.message); }
 };
 document.getElementById('ytPlImport').onclick = async () => {
   const url = document.getElementById('ytPlUrl').value.trim();
-  const key = getKey();
   const m = url.match(/[?&]list=([^&]+)/);
   if (!m) { alert('Paste a full YouTube playlist URL (with ?list=…).'); return; }
   resultsEl.innerHTML = '<div class="hint">Importing playlist… (no key needed)</div>';
@@ -763,25 +854,15 @@ document.getElementById('ytPlImport').onclick = async () => {
     }
   } catch (e) {
     console.warn('keyless playlist import failed', e);
-    if (!key) { resultsEl.innerHTML = `<div class="hint">Import failed: ${escapeHtml(e.message)}</div>`; return; }
   }
-  // 2) Official Data API fallback (needs key)
-  if (!key) { resultsEl.innerHTML = '<div class="hint">Keyless import returned nothing. Add a Data API key in Settings as backup.</div>'; return; }
+  // 2) Official Data API fallback (uses the key stored by the main process)
   try {
-    let page = '', added = 0;
-    for (let p = 0; p < 5; p++) {
-      const r = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${m[1]}&key=${key}${page ? '&pageToken=' + page : ''}`).then(r => r.json());
-      if (r.error) throw new Error(r.error.message);
-      (r.items || []).forEach(it => {
-        tracks.push({ kind: 'yt', name: it.snippet.title, videoId: it.snippet.resourceId.videoId, channel: it.snippet.videoOwnerChannelTitle || it.snippet.channelTitle, thumb: it.snippet.thumbnails?.medium?.url });
-        added++;
-      });
-      page = r.nextPageToken || '';
-      if (!page) break;
-    }
+    const items = await window.mintmusic.importPlaylistData(m[1]);
+    const added = items.length;
+    items.forEach(it => tracks.push({ kind: 'yt', name: it.title, videoId: it.videoId, channel: it.channel, thumb: it.thumb }));
     render();
-    alert(`Imported ${added} tracks to queue.`);
-  } catch (e) { alert('Import failed: ' + e.message); }
+    resultsEl.innerHTML = `<div class="hint">Imported ${added} tracks to queue. ▶ to play.</div>`;
+  } catch (e) { resultsEl.innerHTML = `<div class="hint">Import failed: ${escapeHtml(e.message)}</div>`; }
 };
 
 // arrow-key seek

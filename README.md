@@ -22,6 +22,7 @@ Or find **MintMusic** in the Mint menu afterwards.
 ```bash
 npm install
 npm start
+npm test
 ```
 
 `.deb` package:
@@ -31,14 +32,14 @@ npm run dist
 sudo dpkg -i dist/mintmusic_*_amd64.deb
 ```
 
-Requires: Node 20+. No API key needed for search, playback, or playlist import (uses keyless Innertube access with Piped fallback; an optional YouTube Data API key in Settings acts as backup).
+Requires: Node 20+. No API key needed for search, playback, or playlist import (uses keyless Innertube access with Piped fallback; an optional YouTube Data API key in Settings acts as backup and is stored using the operating system's secure storage).
 
 ## Features
 
 - **Keyless YouTube search** — no signup, no quota; optional Data API key as backup
 - **Audio-first playback** — hidden-video YouTube player + local audio files (`mp3/ogg/wav/flac/m4a`) in one shared queue
-- **Queue** — reorder-free list with per-track remove, clear, shuffle, repeat off/all/one, seek bar, persistent volume
-- **Playlists** — create/rename/delete, add any track, play whole list, stored locally
+- **Queue** — drag-reorderable list with per-track remove, clear, shuffle, repeat off/all/one, seek bar, persistent volume
+- **Playlists** — create/delete, add YouTube tracks, play a whole list, stored locally
 - **Playlist import** — paste any YouTube playlist URL (keyless, up to 500 tracks)
 - **🎲 Random mix** — picks your selected genre + 2 related, queues ~15 shuffled tracks
 - **🎲 Random playlist** — finds and imports a random playlist of the selected genre
@@ -48,7 +49,7 @@ Requires: Node 20+. No API key needed for search, playback, or playlist import (
 - **Lyrics** — one-click lookup via lrclib.net in a glass modal
 - **Sleep timer** — 5/15/30/60/90 min with countdown
 - **History** — last 200 plays
-- **Export** — queue to `.m3u`
+- **Export** — save the queue as `.m3u` with local file paths and YouTube watch links
 - **Mint integration** — taskbar/task-tray icon, minimize-to-tray, optional close-to-tray, media keys (play/pause/next/prev/stop), desktop notifications
 - **Shortcuts** — `Space` play/pause, `/` search, `←/→` seek 10s
 

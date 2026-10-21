@@ -1,7 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut, shell, session, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, shell, session, Tray, Menu, nativeImage, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { fileURLToPath } = require('url');
 const { autoUpdater } = require('electron-updater');
+const { toM3u } = require('./lib/playlist-utils');
 
 // YouTube (since Jul 2025) rejects embeds without a Referer (error 153).
 // file:// sends none, so spoof it via header injection in main.
@@ -25,6 +27,58 @@ app.commandLine.appendSwitch('disable-features', 'VaapiVideoDecoder,VaapiVideoEn
 let win = null;
 let tray = null;
 let quitting = false;
+let updateReady = false;
+let currentUpdateStatus = '';
+
+function publishUpdateStatus(message) {
+  currentUpdateStatus = message;
+  if (win && !win.isDestroyed()) win.webContents.send('update-status', message);
+}
+
+function isTrustedRenderer(event) {
+  try {
+    if (event.sender !== win?.webContents || event.senderFrame !== event.sender.mainFrame) return false;
+    const url = new URL(event.senderFrame.url);
+    return url.protocol === 'file:' && path.resolve(fileURLToPath(url)) === path.join(__dirname, 'index.html');
+  } catch {
+    return false;
+  }
+}
+
+function handleRenderer(channel, handler) {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    return handler(event, ...args);
+  });
+}
+
+function apiKeyPath() { return path.join(app.getPath('userData'), 'youtube-api-key.enc'); }
+function secureStorageAvailable() {
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  if (process.platform === 'linux') {
+    return ['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6'].includes(safeStorage.getSelectedStorageBackend());
+  }
+  return true;
+}
+function readApiKey() {
+  try {
+    if (!secureStorageAvailable()) return '';
+    return safeStorage.decryptString(fs.readFileSync(apiKeyPath()));
+  } catch { return ''; }
+}
+function writeApiKey(key) {
+  try {
+    if (!key) fs.rmSync(apiKeyPath(), { force: true });
+    else {
+      if (!secureStorageAvailable()) return false;
+      fs.writeFileSync(apiKeyPath(), safeStorage.encryptString(key), { mode: 0o600 });
+    }
+    return true;
+  } catch (e) {
+    console.warn('Could not save YouTube API key:', e.message);
+    return false;
+  }
+}
 
 // ---- tray prefs (persisted in userData) ----
 function prefsPath() { return path.join(app.getPath('userData'), 'tray.json'); }
@@ -43,9 +97,22 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true
     },
     title: 'MintMusic'
+  });
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(url)) shell.openExternal(url).catch(() => {});
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'file:' || path.resolve(fileURLToPath(parsed)) !== path.join(__dirname, 'index.html')) event.preventDefault();
+    } catch { event.preventDefault(); }
   });
 
   win.loadFile('index.html');
@@ -109,14 +176,22 @@ app.whenReady().then(() => {
   // Auto-updates from GitHub Releases (packaged app only; silent in dev).
   if (app.isPackaged) {
     autoUpdater.autoDownload = false;
-    autoUpdater.on('update-available', () => {
-      if (win && !win.isDestroyed()) win.webContents.send('update-status', 'Update available — downloading…');
+    autoUpdater.on('update-available', info => {
+      console.log('Update available:', info.version);
+      publishUpdateStatus('Update available — downloading…');
       autoUpdater.downloadUpdate().catch(e => console.warn('update download failed:', e.message));
     });
     autoUpdater.on('update-downloaded', () => {
-      if (win && !win.isDestroyed()) win.webContents.send('update-status', 'Update downloaded — restart to install.');
+      updateReady = true;
+      publishUpdateStatus('Update downloaded — restart to install.');
     });
-    autoUpdater.on('error', e => console.warn('updater:', e.message));
+    autoUpdater.on('update-not-available', () => {
+      publishUpdateStatus('You are up to date.');
+    });
+    autoUpdater.on('error', e => {
+      console.warn('updater:', e.message);
+      publishUpdateStatus('Update check failed: ' + e.message);
+    });
     autoUpdater.checkForUpdates().catch(() => {});
   }
 
@@ -142,24 +217,28 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin' && (!tray || quitting)) app.quit();
 });
 
-ipcMain.handle('pick-folder', async () => {
+handleRenderer('pick-folder', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
   return result.canceled ? null : result.filePaths[0];
 });
 
-ipcMain.handle('open-url', async (_e, url) => {
+handleRenderer('open-url', async (_e, url) => {
   const u = String(url || '');
   if (/^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(u)) await shell.openExternal(u);
 });
 
-ipcMain.handle('tray-prefs-get', () => loadPrefs());ipcMain.handle('tray-prefs-set', (_e, p) => {
-  const next = Object.assign(loadPrefs(), p);
+handleRenderer('tray-prefs-get', () => loadPrefs());
+handleRenderer('tray-prefs-set', (_e, p) => {
+  const next = Object.assign(loadPrefs(), {
+    minimizeToTray: Boolean(p && p.minimizeToTray),
+    closeToTray: Boolean(p && p.closeToTray)
+  });
   savePrefs(next);
   return next;
 });
 
 let miniOn = false;
-let normalBounds = null;ipcMain.handle('mini-toggle', () => {  if (!win || win.isDestroyed()) return false;
+let normalBounds = null;handleRenderer('mini-toggle', () => {  if (!win || win.isDestroyed()) return false;
   miniOn = !miniOn;
   if (miniOn) {
     normalBounds = win.getBounds();
@@ -202,7 +281,7 @@ function initMpris() {
     console.warn('MPRIS unavailable:', e.message);
   }
 }
-ipcMain.handle('mpris-update', (_e, s) => {
+handleRenderer('mpris-update', (_e, s) => {
   if (!mpris) return;
   try {
     const st = (s && s.state) === 'playing' ? 'Playing' : (s && s.state) === 'paused' ? 'Paused' : 'Stopped';
@@ -221,14 +300,99 @@ ipcMain.handle('mpris-update', (_e, s) => {
   } catch {}
 });
 
-ipcMain.handle('check-updates', async () => {
+handleRenderer('check-updates', async () => {
   if (!app.isPackaged) return 'Dev mode — updates only work in the installed .deb.';
+  if (updateReady) return 'Update downloaded — restart to install.';
   try {
     const r = await autoUpdater.checkForUpdates();
-    return r && r.updateInfo ? 'Latest already installed (v' + r.updateInfo.version + ').' : 'No updates found.';
+    if (r && r.isUpdateAvailable) return 'Update available — downloading…';
+    return 'You are up to date.';
   } catch (e) {
     return 'Update check failed: ' + e.message;
   }
+});
+handleRenderer('update-status-get', () => currentUpdateStatus);
+
+handleRenderer('install-update', () => {
+  if (!app.isPackaged || !updateReady) return false;
+  autoUpdater.quitAndInstall();
+  return true;
+});
+
+handleRenderer('api-key-status', () => ({ available: secureStorageAvailable(), saved: Boolean(readApiKey()) }));
+handleRenderer('api-key-set', (_e, value) => {
+  const key = String(value || '').trim();
+  if (key.length > 256) throw new Error('API key is too long.');
+  return writeApiKey(key);
+});
+handleRenderer('api-key-clear', () => writeApiKey(''));
+
+async function youtubeDataRequest(endpoint, params) {
+  const key = readApiKey();
+  if (!key) throw new Error('Save a YouTube Data API key in Settings to use this fallback.');
+  const url = new URL(`https://www.googleapis.com/youtube/v3/${endpoint}`);
+  for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
+  url.searchParams.set('key', key);
+  const response = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  const body = await response.json();
+  if (!response.ok || body.error) throw new Error(body.error?.message || `YouTube Data API answered ${response.status}.`);
+  return body;
+}
+
+handleRenderer('yt-data-search', async (_e, query) => {
+  const q = String(query || '').trim().slice(0, 100);
+  if (!q) return [];
+  const search = await youtubeDataRequest('search', {
+    part: 'snippet', type: 'video', videoCategoryId: '10', maxResults: '15', q
+  });
+  const items = search.items || [];
+  const ids = items.map(item => item.id?.videoId).filter(Boolean);
+  if (!ids.length) return [];
+  const details = await youtubeDataRequest('videos', { part: 'contentDetails', id: ids.join(',') });
+  const durations = Object.fromEntries((details.items || []).map(item => [item.id, item.contentDetails?.duration || '']));
+  return items.filter(item => item.id?.videoId).map(item => ({
+    videoId: item.id.videoId,
+    title: item.snippet?.title || 'Unknown',
+    channel: item.snippet?.channelTitle || '',
+    duration: durations[item.id.videoId] || '',
+    thumb: item.snippet?.thumbnails?.medium?.url || ''
+  }));
+});
+
+handleRenderer('yt-data-playlist', async (_e, playlistId) => {
+  const id = String(playlistId || '');
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) throw new Error('Invalid playlist ID.');
+  const out = [];
+  let pageToken = '';
+  for (let page = 0; page < 5; page++) {
+    const params = { part: 'snippet', maxResults: '50', playlistId: id };
+    if (pageToken) params.pageToken = pageToken;
+    const result = await youtubeDataRequest('playlistItems', params);
+    for (const item of result.items || []) {
+      const videoId = item.snippet?.resourceId?.videoId;
+      if (!videoId) continue;
+      out.push({
+        videoId,
+        title: item.snippet.title || 'Unknown',
+        channel: item.snippet.videoOwnerChannelTitle || item.snippet.channelTitle || '',
+        thumb: item.snippet.thumbnails?.medium?.url || ''
+      });
+    }
+    pageToken = result.nextPageToken || '';
+    if (!pageToken || out.length >= 500) break;
+  }
+  return out.slice(0, 500);
+});
+
+handleRenderer('save-m3u', async (_e, tracks) => {
+  const result = await dialog.showSaveDialog(win, {
+    title: 'Export queue',
+    defaultPath: path.join(app.getPath('music'), 'mintmusic.m3u'),
+    filters: [{ name: 'M3U playlist', extensions: ['m3u'] }]
+  });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  await fs.promises.writeFile(result.filePath, toM3u(tracks), 'utf8');
+  return { canceled: false, filePath: result.filePath };
 });
 
 // ---- keyless YouTube (Innertube) ----
@@ -267,7 +431,7 @@ function findContinuation(node) {
   return null;
 }
 
-ipcMain.handle('yt-search', async (_e, query) => {
+handleRenderer('yt-search', async (_e, query) => {
   const q = String(query || '').slice(0, 100);
   if (!q) return [];
   // 1) Innertube
@@ -275,7 +439,8 @@ ipcMain.handle('yt-search', async (_e, query) => {
     const r = await fetch(YT_SEARCH_URL(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, query: q, params: 'EgIQAQ%3D%3D' })
+      body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, query: q, params: 'EgIQAQ%3D%3D' }),
+      signal: AbortSignal.timeout(20000)
     });
     if (r.ok) {
       const j = await r.json();
@@ -288,7 +453,7 @@ ipcMain.handle('yt-search', async (_e, query) => {
   const instances = ['https://pipedapi.kavin.rocks', 'https://pipedapi.adminforge.de', 'https://api-piped.mha.fi'];
   for (const base of instances) {
     try {
-      const r = await fetch(`${base}/search?q=${encodeURIComponent(q)}&filter=videos`);
+      const r = await fetch(`${base}/search?q=${encodeURIComponent(q)}&filter=videos`, { signal: AbortSignal.timeout(12000) });
       if (!r.ok) continue;
       const j = await r.json();
       const items = (j.items || j).filter(i => i.url && i.url.includes('/watch'));
@@ -328,13 +493,14 @@ function collectPlaylists(node, out) {
   }
 }
 
-ipcMain.handle('yt-search-playlists', async (_e, query) => {
+handleRenderer('yt-search-playlists', async (_e, query) => {
   const q = String(query || '').slice(0, 100);
   if (!q) return [];
   const r = await fetch(YT_SEARCH_URL(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, query: q, params: 'EgIQAw%3D%3D' })
+    body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, query: q, params: 'EgIQAw%3D%3D' }),
+    signal: AbortSignal.timeout(20000)
   });
   if (!r.ok) throw new Error('YouTube answered ' + r.status);
   const j = await r.json();
@@ -344,7 +510,7 @@ ipcMain.handle('yt-search-playlists', async (_e, query) => {
 });
 
 // Keyless playlist import via Innertube browse (no API key). Follows continuations.
-ipcMain.handle('yt-playlist', async (_e, playlistId) => {
+handleRenderer('yt-playlist', async (_e, playlistId) => {
   const id = String(playlistId || '').slice(0, 60);
   if (!id) return [];
   const out = [];
@@ -354,7 +520,8 @@ ipcMain.handle('yt-playlist', async (_e, playlistId) => {
       ? { context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, continuation }
       : { context: { client: { clientName: 'WEB', clientVersion: '2.20241001.01.00' } }, browseId: 'VL' + id };
     const r = await fetch(YT_BROWSE_URL(), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20000)
     });
     if (!r.ok) throw new Error('YouTube answered ' + r.status);
     const j = await r.json();
